@@ -1,5 +1,5 @@
 name = 'luggster-ops'
-main = "Luggster-Ops/Ops-Console.js"
+main = "Ops-Console.js"
 compatibility_date = "2024-01-01"
 
 # Development Variables
