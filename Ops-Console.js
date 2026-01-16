@@ -3,12 +3,26 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
+    // Handle CORS preflight
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type'
+        }
+      });
+    }
+
     // 1. Security Check
     const adminPin = env.ADMIN_PIN || "1234";
     if (path === "/" && url.searchParams.get("pin") !== adminPin) {
       return new Response("Unauthorized Access", { 
         status: 401,
-        headers: { 'Content-Type': 'text/plain' }
+        headers: { 
+          'Content-Type': 'text/plain',
+          'Access-Control-Allow-Origin': '*'
+        }
       });
     }
 
@@ -32,22 +46,23 @@ async function handleNeonQuery(request, env) {
     const { query, params = [] } = await request.json();
     
     // Use ONLY the connection string
-  const connectionString = env.DATABASE_URL;    
-  if (!connectionString) {
-    return new Response(
-      JSON.stringify({ 
-        error: "Database configuration missing. Please set DATABASE_URL.",
-        code: "NO_DB_CONFIG"
-      }),
-      { 
-        status: 500, 
-        headers: { 
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        } 
-      }
-    );
-  }
+    const connectionString = env.DATABASE_URL;    
+    if (!connectionString) {
+      return new Response(
+        JSON.stringify({ 
+          error: "Database configuration missing. Please set DATABASE_URL.",
+          code: "NO_DB_CONFIG"
+        }),
+        { 
+          status: 500, 
+          headers: { 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          } 
+        }
+      );
+    }
+    
     // For security, only allow SELECT and UPDATE queries
     const normalizedQuery = query.trim().toUpperCase();
     if (!normalizedQuery.startsWith('SELECT') && !normalizedQuery.startsWith('UPDATE')) {
@@ -97,43 +112,48 @@ async function handleNeonQuery(request, env) {
   }
 }
 
-// FIXED: Remove the problematic header
+// FIXED: Updated Neon DB connection
 async function executeNeonQuery(connectionString, query, params) {
   try {
-    // Parse: postgresql://username:password@hostname/database
-    const match = connectionString.match(/postgresql:\/\/([^:]+):([^@]+)@([^\/]+)\/(.+)/);
+    // Parse the connection string
+    // Example: postgresql://neondb_owner:npg_***@ep-proud-cake-a4m2vdkf-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require
+    const url = new URL(connectionString);
     
-    if (!match) {
-      throw new Error('Invalid connection string format');
-    }
+    const username = url.username;
+    const password = url.password;
+    const hostname = url.hostname;
+    const database = url.pathname.slice(1).split('?')[0];
     
-    const [, username, password, hostname, database] = match;
-    
-    // Use password as Bearer token
-    const authToken = password;
+    // IMPORTANT: For Neon SQL-over-HTTP, we need to use direct endpoint
+    // Remove "-pooler" from the hostname if present
+    const directHostname = hostname.replace('-pooler', '');
     
     // Neon SQL-over-HTTP endpoint
-    const endpoint = `https://${hostname}/sql`;
+    const endpoint = `https://${directHostname}/sql`;
     
     console.log('Calling Neon endpoint:', endpoint);
+    console.log('Database:', database);
     
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${authToken}`,
+        'Authorization': `Bearer ${password}`,
         'Content-Type': 'application/json'
-        // REMOVED: 'Neon-Connection-String': connectionString
       },
       body: JSON.stringify({
         query: query,
         params: params || [],
-        // Optional: include database name if needed
         database: database
       })
     });
     
     if (!response.ok) {
       const errorText = await response.text();
+      console.error('Neon API error details:', {
+        status: response.status,
+        error: errorText,
+        endpoint: endpoint
+      });
       throw new Error(`Neon API error: ${response.status} - ${errorText}`);
     }
     
@@ -147,6 +167,59 @@ async function executeNeonQuery(connectionString, query, params) {
     console.error('Query failed:', error);
     throw error;
   }
+}
+
+// SIMPLER: Alternative Neon HTTP API call (using console API)
+async function executeNeonQuerySimple(connectionString, query, params) {
+  // Extract just the password (API key) from connection string
+  const password = connectionString.split(':')[2]?.split('@')[0];
+  
+  if (!password) {
+    throw new Error('Could not extract API key from connection string');
+  }
+  
+  // Extract project ID from hostname: ep-proud-cake-a4m2vdkf-pooler.us-east-1.aws.neon.tech
+  const hostname = new URL(connectionString).hostname;
+  const match = hostname.match(/ep-([^-]+)-([^-]+)-([^-]+)/);
+  
+  if (!match) {
+    throw new Error('Could not extract project ID from connection string');
+  }
+  
+  const projectId = match[3]; // a4m2vdkf
+  
+  const endpoint = `https://console.neon.tech/api/v2/projects/${projectId}/query`;
+  
+  console.log('Using Neon Console API endpoint:', endpoint);
+  
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${password}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    },
+    body: JSON.stringify({
+      query: query,
+      params: params || []
+    })
+  });
+  
+  if (!response.ok) {
+    let error;
+    try {
+      error = await response.json();
+      throw new Error(error.message || 'Neon API error');
+    } catch {
+      throw new Error(`Neon API error: ${response.status} ${response.statusText}`);
+    }
+  }
+  
+  const result = await response.json();
+  return {
+    rows: result.rows || [],
+    rowCount: result.rows?.length || 0
+  };
 }
 // Function to serve the dashboard HTML
 function serveDashboard() {
