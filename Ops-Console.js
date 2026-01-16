@@ -404,7 +404,7 @@ function serveDashboard() {
                       u.email,
                       CONCAT(u.first_name, ' ', u.last_name) as name,
                       dp.is_online
-                    FROM driver_profiles dp
+                    FROM users dp
                     JOIN users u ON dp.user_id = u.id
                     WHERE u.user_type = 'driver'
                     ORDER BY dp.is_online DESC, u.first_name ASC\`
@@ -442,7 +442,7 @@ function serveDashboard() {
                       CONCAT(dpu.first_name, ' ', dpu.last_name) as driver_name
                     FROM shipments s
                     JOIN users u ON s.customer_id = u.id
-                    LEFT JOIN driver_profiles dp ON s.driver_id = dp.user_id
+                    LEFT JOIN users dp ON s.driver_id = dp.user_id
                     LEFT JOIN users dpu ON dp.user_id = dpu.id
                     WHERE s.created_at > NOW() - INTERVAL '30 days'
                     ORDER BY s.created_at DESC
