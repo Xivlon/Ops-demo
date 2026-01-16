@@ -348,47 +348,50 @@ function serveDashboard() {
         await loadDrivers();
         await Promise.all([loadStats(), loadShipments()]);
     }
-
-async function loadStats() {
+async function loadShipments() {
+    const tbody = document.getElementById('table-body');
     try {
         const res = await fetch('/api/neon-query', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
                 query: `SELECT 
-                  COUNT(*) FILTER (WHERE shipment_status = 'PENDING') as pending,
-                  COUNT(*) FILTER (WHERE shipment_status = 'ASSIGNED') as assigned,
-                  COUNT(*) FILTER (WHERE shipment_status = 'PICKED_UP') as picked_up,
-                  COUNT(*) FILTER (WHERE shipment_status = 'DELIVERED') as delivered,
-                  COALESCE(SUM(price_cents), 0) / 100.0 as total_revenue,
-                  (SELECT COUNT(*) FROM driver_profiles WHERE is_online = true) as online_drivers,
-                  (SELECT COUNT(*) FROM driver_profiles) as total_drivers
-                FROM shipments
-                WHERE created_at > NOW() - INTERVAL '30 days'`
+                  s.id,
+                  s.created_at,
+                  s.shipment_status as status,
+                  s.driver_id,
+                  s.origin_airport,
+                  s.destination_airport,
+                  s.pickup_address,
+                  s.dropoff_address,
+                  s.pickup_photo_url,
+                  s.delivery_photo_url,
+                  s.price_cents,
+                  CONCAT(cu.first_name, ' ', cu.last_name) as customer_name,
+                  CONCAT(du.first_name, ' ', du.last_name) as driver_name,
+                  dp.is_online as driver_is_online
+                FROM shipments s
+                JOIN users cu ON s.customer_id = cu.id
+                LEFT JOIN users du ON s.driver_id = du.id
+                LEFT JOIN driver_profiles dp ON du.id = dp.user_id
+                WHERE s.created_at > NOW() - INTERVAL '30 days'
+                ORDER BY s.created_at DESC
+                LIMIT 100`
             })
         });
-        const data = await res.json();
         
-        const makeCard = (label, val, color) => {
-            return '<div class="bg-slate-800 rounded-xl p-4 border border-slate-700 relative overflow-hidden group hover:border-' + color + '-500/50 transition-colors">' +
-                   '<div class="absolute top-0 right-0 w-16 h-16 bg-' + color + '-500/10 rounded-bl-full -mr-2 -mt-2 transition-transform group-hover:scale-110"></div>' +
-                   '<div class="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">' + label + '</div>' +
-                   '<div class="text-2xl font-black text-' + color + '-400 relative z-10">' + (val || 0) + '</div>' +
-                   '</div>';
-        };
+        const data = await res.json();
+        allShipments = data.rows || [];
+        
+        document.getElementById('count-badge').innerText = allShipments.length;
+        document.getElementById('last-updated').innerText = "Synced: " + new Date().toLocaleTimeString();
 
-        const grid = document.getElementById('stats-grid');
-        grid.innerHTML = 
-            makeCard('Pending', data.rows?.[0]?.pending, 'yellow') +
-            makeCard('Assigned', data.rows?.[0]?.assigned, 'blue') +
-            makeCard('In Transit', data.rows?.[0]?.picked_up, 'purple') +
-            makeCard('Completed', data.rows?.[0]?.delivered, 'green') +
-            makeCard('Revenue', '$' + (data.rows?.[0]?.total_revenue || '0.00'), 'emerald') +
-            makeCard('Active Drivers', (data.rows?.[0]?.online_drivers || 0) + '/' + (data.rows?.[0]?.total_drivers || 0), 'orange');
+        renderTable();
 
     } catch (e) { 
-        console.warn("Stats error", e);
-        showToast("Failed to load statistics", "red");
+        console.error("Shipment load failed", e); 
+        tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-12 text-center text-red-400">Connection Error: ' + e.message + '</td></tr>';
+        showToast("Failed to load shipments", "red");
     }
 }
 async function loadDrivers() {
