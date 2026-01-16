@@ -1,0 +1,7 @@
+name = "luggagelink-ops"
+main = "Ops-Console.js"
+compatibility_date = "2024-01-01"
+
+# Development Variables
+[vars]
+ADMIN_PIN = "1234"
