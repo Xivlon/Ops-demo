@@ -361,8 +361,8 @@ function serveDashboard() {
                       COUNT(*) FILTER (WHERE status = 'PICKED_UP') as picked_up,
                       COUNT(*) FILTER (WHERE status = 'DELIVERED') as delivered,
                       COALESCE(SUM(price_cents), 0) / 100.0 as total_revenue,
-                      (SELECT COUNT(*) FROM driver_profiles WHERE is_online = true) as online_drivers,
-                      (SELECT COUNT(*) FROM driver_profiles) as total_drivers
+                      (SELECT COUNT(*) FROM users WHERE is_online = true) as online_drivers,
+                      (SELECT COUNT(*) FROM users) as total_drivers
                     FROM shipments
                     WHERE created_at > NOW() - INTERVAL '30 days'\`
                 })
