@@ -31,14 +31,14 @@ export default {
       return await handleNeonQuery(request, env);
     }
 
-    // 3. Serve the dashboard
-    if (path === "/") {
-      return serveDashboard();
+    // 3. Test endpoint
+    if (path === "/test") {
+      return await testConnection(env);
     }
 
-    // 4. Debug endpoint
-    if (path === "/test-connection") {
-      return await testNeonConnection(env);
+    // 4. Serve the dashboard
+    if (path === "/") {
+      return serveDashboard();
     }
 
     return new Response("Not Found", { status: 404 });
@@ -86,7 +86,7 @@ async function handleNeonQuery(request, env) {
       );
     }
 
-    // Connect to Neon DB using ONLY connection string
+    // Connect to Neon DB
     const result = await executeNeonQuery(connectionString, query, params);
     
     return new Response(
@@ -117,36 +117,36 @@ async function handleNeonQuery(request, env) {
   }
 }
 
-// FIXED: Working Neon DB connection
+// FIXED: Use Neon's Console API with your project ID
 async function executeNeonQuery(connectionString, query, params) {
   try {
-    console.log('Starting Neon query execution');
+    console.log('Starting Neon query...');
     
-    if (!connectionString) {
-      throw new Error('Connection string is empty');
-    }
-    
-    // Parse the connection string
+    // Parse connection string to get API key
+    // Format: postgresql://neondb_owner:npg_***@ep-proud-cake-a4m2vdkf-pooler.us-east-1.aws.neon.tech/neondb
     const url = new URL(connectionString);
-    const password = url.password;
-    const hostname = url.hostname;
+    const apiKey = url.password; // This is your Neon API key
     
-    if (!password) {
+    if (!apiKey) {
       throw new Error('No API key found in connection string');
     }
     
-    // METHOD 1: Direct SQL-over-HTTP (remove -pooler)
-    const directHostname = hostname.replace('-pooler', '');
-    const endpoint = `https://${directHostname}/sql`;
+    // Your project ID: curly-truth-78387929
+    const projectId = "curly-truth-78387929";
     
-    console.log('Using Neon endpoint:', endpoint);
-    console.log('Query (first 100 chars):', query.substring(0, 100));
+    // Use Neon Console API v2
+    const endpoint = `https://console.neon.tech/api/v2/projects/${projectId}/query`;
+    
+    console.log('Using endpoint:', endpoint);
+    console.log('API key length:', apiKey.length);
+    console.log('Query:', query.substring(0, 100) + '...');
     
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${password}`,
-        'Content-Type': 'application/json'
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
       },
       body: JSON.stringify({
         query: query,
@@ -157,24 +157,19 @@ async function executeNeonQuery(connectionString, query, params) {
     console.log('Response status:', response.status);
     
     if (!response.ok) {
-      let errorText;
+      let errorData;
       try {
-        errorText = await response.text();
-      } catch {
-        errorText = response.statusText;
+        errorData = await response.json();
+        console.error('Neon API error response:', errorData);
+      } catch (e) {
+        console.error('Failed to parse error response');
       }
       
-      console.error('Neon API error:', {
-        status: response.status,
-        error: errorText,
-        endpoint: endpoint
-      });
-      
-      throw new Error(`Neon API error: ${response.status} - ${errorText}`);
+      throw new Error(`Neon API error: ${response.status} ${response.statusText}`);
     }
     
     const result = await response.json();
-    console.log('Query successful, rows returned:', result.rows?.length || 0);
+    console.log('Query successful, rows:', result.rows?.length || 0);
     
     return {
       rows: result.rows || [],
@@ -187,20 +182,29 @@ async function executeNeonQuery(connectionString, query, params) {
   }
 }
 
-// Debug endpoint function
-async function testNeonConnection(env) {
+// Test endpoint
+async function testConnection(env) {
   try {
     const connectionString = env.DATABASE_URL;
     
     if (!connectionString) {
-      return new Response("DATABASE_URL is not set", { 
+      return new Response(JSON.stringify({
+        success: false,
+        error: "DATABASE_URL not set",
+        timestamp: new Date().toISOString()
+      }), {
         status: 500,
-        headers: { 'Content-Type': 'text/plain' }
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        }
       });
     }
     
     // Test with a simple query
     const testQuery = "SELECT 1 as test_value, NOW() as current_time";
+    
+    console.log('Testing connection with project ID: curly-truth-78387929');
     
     const result = await executeNeonQuery(connectionString, testQuery, []);
     
@@ -208,9 +212,9 @@ async function testNeonConnection(env) {
       success: true,
       data: result.rows,
       connectionInfo: {
-        hasConnectionString: !!connectionString,
-        connectionStringLength: connectionString.length,
-        firstChars: connectionString.substring(0, 30) + '...'
+        hasApiKey: true,
+        projectId: "curly-truth-78387929",
+        timestamp: new Date().toISOString()
       }
     }, null, 2), {
       headers: { 
@@ -223,7 +227,7 @@ async function testNeonConnection(env) {
     return new Response(JSON.stringify({
       success: false,
       error: error.message,
-      stack: error.stack
+      timestamp: new Date().toISOString()
     }, null, 2), {
       status: 500,
       headers: { 
