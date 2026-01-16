@@ -349,7 +349,7 @@ function serveDashboard() {
         await Promise.all([loadStats(), loadShipments()]);
     }
 
-    async function loadStats() {
+async function loadStats() {
     try {
         const res = await fetch('/api/neon-query', {
             method: 'POST',
