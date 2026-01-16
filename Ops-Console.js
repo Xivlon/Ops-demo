@@ -384,7 +384,7 @@ function serveDashboard() {
                 makeCard('Assigned', data.rows?.[0]?.assigned, 'blue') +
                 makeCard('In Transit', data.rows?.[0]?.picked_up, 'purple') +
                 makeCard('Completed', data.rows?.[0]?.delivered, 'green') +
-                makeCard('Revenue', '$' + (data.rows?.[0]?.total_revenue || '0.00'), 'emerald') +
+                makeCard('Revenue', '$' + parseFloat(data.rows?.[0]?.total_revenue || 0).toFixed(2), 'emerald') +
                 makeCard('Active Drivers', (data.rows?.[0]?.online_drivers || 0) + '/' + (data.rows?.[0]?.total_drivers || 0), 'orange');
 
         } catch (e) { 
