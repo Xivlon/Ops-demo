@@ -1,5 +1,4 @@
 {
-  "name" = "luggster-ops",
   "version": "1.0.0",
   "description": "Operations console for LuggageLink with Neon DB integration",
   "main": "Ops-Console.js",
