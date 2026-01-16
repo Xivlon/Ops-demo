@@ -356,18 +356,17 @@ async function loadStats() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
                 query: `SELECT 
-                  COUNT(*) FILTER (WHERE status = 'PENDING') as pending,
-                  COUNT(*) FILTER (WHERE status = 'ASSIGNED') as assigned,
-                  COUNT(*) FILTER (WHERE status = 'PICKED_UP') as picked_up,
-                  COUNT(*) FILTER (WHERE status = 'DELIVERED') as delivered,
+                  COUNT(*) FILTER (WHERE shipment_status = 'PENDING') as pending,
+                  COUNT(*) FILTER (WHERE shipment_status = 'ASSIGNED') as assigned,
+                  COUNT(*) FILTER (WHERE shipment_status = 'PICKED_UP') as picked_up,
+                  COUNT(*) FILTER (WHERE shipment_status = 'DELIVERED') as delivered,
                   COALESCE(SUM(price_cents), 0) / 100.0 as total_revenue,
-                  (SELECT COUNT(*) FROM users WHERE user_type = 'driver' AND is_online = true) as online_drivers,
-                  (SELECT COUNT(*) FROM users WHERE user_type = 'driver') as total_drivers
+                  (SELECT COUNT(*) FROM driver_profiles WHERE is_online = true) as online_drivers,
+                  (SELECT COUNT(*) FROM driver_profiles) as total_drivers
                 FROM shipments
                 WHERE created_at > NOW() - INTERVAL '30 days'`
             })
         });
-        
         const data = await res.json();
         
         const makeCard = (label, val, color) => {
@@ -392,20 +391,23 @@ async function loadStats() {
         showToast("Failed to load statistics", "red");
     }
 }
- async function loadDrivers() {
+async function loadDrivers() {
     try {
         const res = await fetch('/api/neon-query', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
                 query: `SELECT 
-                  id,
-                  email,
-                  CONCAT(first_name, ' ', last_name) as name,
-                  is_online
-                FROM users 
-                WHERE user_type = 'driver'
-                ORDER BY is_online DESC, first_name ASC`
+                  u.id,
+                  u.email,
+                  CONCAT(u.first_name, ' ', u.last_name) as name,
+                  dp.is_online,
+                  dp.rating,
+                  dp.total_deliveries
+                FROM users u
+                JOIN driver_profiles dp ON u.id = dp.user_id
+                WHERE u.user_type = 'driver'
+                ORDER BY dp.is_online DESC, u.first_name ASC`
             })
         });
         
@@ -416,38 +418,37 @@ async function loadStats() {
         showToast("Failed to load drivers", "red");
     }
 }
-
-    async function loadShipments() {
-        const tbody = document.getElementById('table-body');
-        try {
-            const res = await fetch('/api/neon-query', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    query: \`SELECT 
-                      s.id,
-                      s.created_at,
-                      s.status,
-                      s.driver_id,
-                      s.origin_airport,
-                      s.destination_airport,
-                      s.pickup_address,
-                      s.dropoff_address,
-                      s.pickup_photo_url,
-                      s.delivery_photo_url,
-                      s.price_cents,
-                      CONCAT(u.first_name, ' ', u.last_name) as customer_name,
-                      CONCAT(dpu.first_name, ' ', dpu.last_name) as driver_name
-                    FROM shipments s
-                    JOIN users u ON s.customer_id = u.id
-                    LEFT JOIN driver_profiles dp ON s.driver_id = dp.user_id
-                    LEFT JOIN users dpu ON dp.user_id = dpu.id
-                    WHERE s.created_at > NOW() - INTERVAL '30 days'
-                    ORDER BY s.created_at DESC
-                    LIMIT 100\`
-                })
-            });
-            
+async function loadShipments() {
+    const tbody = document.getElementById('table-body');
+    try {
+        const res = await fetch('/api/neon-query', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                query: `SELECT 
+                  s.id,
+                  s.created_at,
+                  s.shipment_status as status,
+                  s.driver_id,
+                  s.origin_airport,
+                  s.destination_airport,
+                  s.pickup_address,
+                  s.dropoff_address,
+                  s.pickup_photo_url,
+                  s.delivery_photo_url,
+                  s.price_cents,
+                  CONCAT(cu.first_name, ' ', cu.last_name) as customer_name,
+                  CONCAT(du.first_name, ' ', du.last_name) as driver_name,
+                  dp.is_online as driver_is_online
+                FROM shipments s
+                JOIN users cu ON s.customer_id = cu.id
+                LEFT JOIN users du ON s.driver_id = du.id
+                LEFT JOIN driver_profiles dp ON du.id = dp.user_id
+                WHERE s.created_at > NOW() - INTERVAL '30 days'
+                ORDER BY s.created_at DESC
+                LIMIT 100`
+            })
+        });         
             const data = await res.json();
             allShipments = data.rows || [];
             
