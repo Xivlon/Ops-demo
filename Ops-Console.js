@@ -1,5 +1,3 @@
-import { neon } from '@neondatabase/serverless';
-
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
