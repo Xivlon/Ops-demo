@@ -195,7 +195,7 @@ async function testConnection(env) {
   }
 }
 
-// Function to serve the dashboard HTML
+// Function to serve the dashboard HTML (keep your existing HTML)
 function serveDashboard() {
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -354,13 +354,13 @@ function serveDashboard() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
                     query: \`SELECT 
-                      COUNT(*) FILTER (WHERE shipment_status = 'PENDING') as pending,
-                      COUNT(*) FILTER (WHERE shipment_status = 'ASSIGNED') as assigned,
-                      COUNT(*) FILTER (WHERE shipment_status = 'PICKED_UP') as picked_up,
-                      COUNT(*) FILTER (WHERE shipment_status = 'DELIVERED') as delivered,
+                      COUNT(*) FILTER (WHERE status = 'PENDING') as pending,
+                      COUNT(*) FILTER (WHERE status = 'ASSIGNED') as assigned,
+                      COUNT(*) FILTER (WHERE status = 'PICKED_UP') as picked_up,
+                      COUNT(*) FILTER (WHERE status = 'DELIVERED') as delivered,
                       COALESCE(SUM(price_cents), 0) / 100.0 as total_revenue,
-                      (SELECT COUNT(*) FROM driver_profiles WHERE is_online = true) as online_drivers,
-                      (SELECT COUNT(*) FROM driver_profiles) as total_drivers
+                      (SELECT COUNT(*) FROM users WHERE is_online = true) as online_drivers,
+                      (SELECT COUNT(*) FROM users) as total_drivers
                     FROM shipments
                     WHERE created_at > NOW() - INTERVAL '30 days'\`
                 })
@@ -382,7 +382,7 @@ function serveDashboard() {
                 makeCard('Assigned', data.rows?.[0]?.assigned, 'blue') +
                 makeCard('In Transit', data.rows?.[0]?.picked_up, 'purple') +
                 makeCard('Completed', data.rows?.[0]?.delivered, 'green') +
-                makeCard('Revenue', '$' + (parseFloat(data.rows?.[0]?.total_revenue || 0).toFixed(2)), 'emerald') +
+                makeCard('Revenue', '$' + parseFloat(data.rows?.[0]?.total_revenue || 0).toFixed(2), 'emerald') +
                 makeCard('Active Drivers', (data.rows?.[0]?.online_drivers || 0) + '/' + (data.rows?.[0]?.total_drivers || 0), 'orange');
 
         } catch (e) { 
@@ -398,14 +398,12 @@ function serveDashboard() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
                     query: \`SELECT 
-                      u.id,
+                      dp.user_id as id,
                       u.email,
                       CONCAT(u.first_name, ' ', u.last_name) as name,
-                      dp.is_online,
-                      dp.rating,
-                      dp.total_deliveries
-                    FROM users u
-                    JOIN driver_profiles dp ON u.id = dp.user_id
+                      dp.is_online
+                    FROM driver_profiles dp
+                    JOIN users u ON dp.user_id = u.id
                     WHERE u.user_type = 'driver'
                     ORDER BY dp.is_online DESC, u.first_name ASC\`
                 })
@@ -429,7 +427,7 @@ function serveDashboard() {
                     query: \`SELECT 
                       s.id,
                       s.created_at,
-                      s.shipment_status as status,
+                      s.status,
                       s.driver_id,
                       s.origin_airport,
                       s.destination_airport,
@@ -438,13 +436,12 @@ function serveDashboard() {
                       s.pickup_photo_url,
                       s.delivery_photo_url,
                       s.price_cents,
-                      CONCAT(cu.first_name, ' ', cu.last_name) as customer_name,
-                      CONCAT(du.first_name, ' ', du.last_name) as driver_name,
-                      dp.is_online as driver_is_online
+                      CONCAT(u.first_name, ' ', u.last_name) as customer_name,
+                      CONCAT(dpu.first_name, ' ', dpu.last_name) as driver_name
                     FROM shipments s
-                    JOIN users cu ON s.customer_id = cu.id
-                    LEFT JOIN users du ON s.driver_id = du.id
-                    LEFT JOIN driver_profiles dp ON du.id = dp.user_id
+                    JOIN users u ON s.customer_id = u.id
+                    LEFT JOIN driver_profiles dp ON s.driver_id = dp.user_id
+                    LEFT JOIN users dpu ON dp.user_id = dpu.id
                     WHERE s.created_at > NOW() - INTERVAL '30 days'
                     ORDER BY s.created_at DESC
                     LIMIT 100\`
@@ -574,7 +571,8 @@ function serveDashboard() {
             const dateStr = d.toLocaleDateString([], {month:'short', day:'numeric'});
             const timeStr = d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
 
-            return \`<tr class="hover:bg-slate-800 transition-colors border-b border-slate-700/50 group">
+            return \`
+                <tr class="hover:bg-slate-800 transition-colors border-b border-slate-700/50 group">
                     <td class="px-6 py-4 whitespace-nowrap">
                         <div class="font-mono text-xs text-slate-500 group-hover:text-slate-300 transition-colors">#\${s.id.slice(0,8)}</div>
                     </td>
@@ -605,7 +603,8 @@ function serveDashboard() {
                     <td class="px-6 py-4 whitespace-nowrap text-right">
                         \${proofHtml}
                     </td>
-                </tr>\`;
+                </tr>
+            \`;
         }).join('');
         
         lucide.createIcons();
@@ -636,7 +635,7 @@ function serveDashboard() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
                     query: \`UPDATE shipments 
-                            SET shipment_status = 'ASSIGNED', driver_id = \$1, claimed_at = NOW() 
+                            SET status = 'ASSIGNED', driver_id = \$1, claimed_at = NOW() 
                             WHERE id = \$2 
                             RETURNING id\`,
                     params: [driverId, shipmentId]
