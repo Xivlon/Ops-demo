@@ -350,74 +350,72 @@ function serveDashboard() {
     }
 
     async function loadStats() {
-        try {
-            const res = await fetch('/api/neon-query', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    query: \`SELECT 
-                      COUNT(*) FILTER (WHERE status = 'PENDING') as pending,
-                      COUNT(*) FILTER (WHERE status = 'ASSIGNED') as assigned,
-                      COUNT(*) FILTER (WHERE status = 'PICKED_UP') as picked_up,
-                      COUNT(*) FILTER (WHERE status = 'DELIVERED') as delivered,
-                      COALESCE(SUM(price_cents), 0) / 100.0 as total_revenue,
-                      (SELECT COUNT(*) FROM users WHERE is_online = true) as online_drivers,
-                      (SELECT COUNT(*) FROM users) as total_drivers
-                    FROM shipments
-                    WHERE created_at > NOW() - INTERVAL '30 days'\`
-                })
-            });
-            
-            const data = await res.json();
-            
-            const makeCard = (label, val, color) => {
-                return '<div class="bg-slate-800 rounded-xl p-4 border border-slate-700 relative overflow-hidden group hover:border-' + color + '-500/50 transition-colors">' +
-                       '<div class="absolute top-0 right-0 w-16 h-16 bg-' + color + '-500/10 rounded-bl-full -mr-2 -mt-2 transition-transform group-hover:scale-110"></div>' +
-                       '<div class="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">' + label + '</div>' +
-                       '<div class="text-2xl font-black text-' + color + '-400 relative z-10">' + (val || 0) + '</div>' +
-                       '</div>';
-            };
+    try {
+        const res = await fetch('/api/neon-query', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                query: `SELECT 
+                  COUNT(*) FILTER (WHERE status = 'PENDING') as pending,
+                  COUNT(*) FILTER (WHERE status = 'ASSIGNED') as assigned,
+                  COUNT(*) FILTER (WHERE status = 'PICKED_UP') as picked_up,
+                  COUNT(*) FILTER (WHERE status = 'DELIVERED') as delivered,
+                  COALESCE(SUM(price_cents), 0) / 100.0 as total_revenue,
+                  (SELECT COUNT(*) FROM users WHERE user_type = 'driver' AND is_online = true) as online_drivers,
+                  (SELECT COUNT(*) FROM users WHERE user_type = 'driver') as total_drivers
+                FROM shipments
+                WHERE created_at > NOW() - INTERVAL '30 days'`
+            })
+        });
+        
+        const data = await res.json();
+        
+        const makeCard = (label, val, color) => {
+            return '<div class="bg-slate-800 rounded-xl p-4 border border-slate-700 relative overflow-hidden group hover:border-' + color + '-500/50 transition-colors">' +
+                   '<div class="absolute top-0 right-0 w-16 h-16 bg-' + color + '-500/10 rounded-bl-full -mr-2 -mt-2 transition-transform group-hover:scale-110"></div>' +
+                   '<div class="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">' + label + '</div>' +
+                   '<div class="text-2xl font-black text-' + color + '-400 relative z-10">' + (val || 0) + '</div>' +
+                   '</div>';
+        };
 
-            const grid = document.getElementById('stats-grid');
-            grid.innerHTML = 
-                makeCard('Pending', data.rows?.[0]?.pending, 'yellow') +
-                makeCard('Assigned', data.rows?.[0]?.assigned, 'blue') +
-                makeCard('In Transit', data.rows?.[0]?.picked_up, 'purple') +
-                makeCard('Completed', data.rows?.[0]?.delivered, 'green') +
-                makeCard('Revenue', '$' + parseFloat(data.rows?.[0]?.total_revenue || 0).toFixed(2), 'emerald') +
-                makeCard('Active Drivers', (data.rows?.[0]?.online_drivers || 0) + '/' + (data.rows?.[0]?.total_drivers || 0), 'orange');
+        const grid = document.getElementById('stats-grid');
+        grid.innerHTML = 
+            makeCard('Pending', data.rows?.[0]?.pending, 'yellow') +
+            makeCard('Assigned', data.rows?.[0]?.assigned, 'blue') +
+            makeCard('In Transit', data.rows?.[0]?.picked_up, 'purple') +
+            makeCard('Completed', data.rows?.[0]?.delivered, 'green') +
+            makeCard('Revenue', '$' + (data.rows?.[0]?.total_revenue || '0.00'), 'emerald') +
+            makeCard('Active Drivers', (data.rows?.[0]?.online_drivers || 0) + '/' + (data.rows?.[0]?.total_drivers || 0), 'orange');
 
-        } catch (e) { 
-            console.warn("Stats error", e);
-            showToast("Failed to load statistics", "red");
-        }
+    } catch (e) { 
+        console.warn("Stats error", e);
+        showToast("Failed to load statistics", "red");
     }
-
-    async function loadDrivers() {
-        try {
-            const res = await fetch('/api/neon-query', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    query: \`SELECT 
-                      dp.user_id as id,
-                      u.email,
-                      CONCAT(u.first_name, ' ', u.last_name) as name,
-                      dp.is_online
-                    FROM users dp
-                    JOIN users u ON dp.user_id = u.id
-                    WHERE u.user_type = 'driver'
-                    ORDER BY dp.is_online DESC, u.first_name ASC\`
-                })
-            });
-            
-            const data = await res.json();
-            allDrivers = data.rows || [];
-        } catch (e) { 
-            console.error("Driver load failed", e);
-            showToast("Failed to load drivers", "red");
-        }
+}
+ async function loadDrivers() {
+    try {
+        const res = await fetch('/api/neon-query', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                query: `SELECT 
+                  id,
+                  email,
+                  CONCAT(first_name, ' ', last_name) as name,
+                  is_online
+                FROM users 
+                WHERE user_type = 'driver'
+                ORDER BY is_online DESC, first_name ASC`
+            })
+        });
+        
+        const data = await res.json();
+        allDrivers = data.rows || [];
+    } catch (e) { 
+        console.error("Driver load failed", e);
+        showToast("Failed to load drivers", "red");
     }
+}
 
     async function loadShipments() {
         const tbody = document.getElementById('table-body');
@@ -442,7 +440,7 @@ function serveDashboard() {
                       CONCAT(dpu.first_name, ' ', dpu.last_name) as driver_name
                     FROM shipments s
                     JOIN users u ON s.customer_id = u.id
-                    LEFT JOIN users dp ON s.driver_id = dp.user_id
+                    LEFT JOIN driver_profiles dp ON s.driver_id = dp.user_id
                     LEFT JOIN users dpu ON dp.user_id = dpu.id
                     WHERE s.created_at > NOW() - INTERVAL '30 days'
                     ORDER BY s.created_at DESC
