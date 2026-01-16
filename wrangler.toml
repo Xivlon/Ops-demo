@@ -1,4 +1,4 @@
-name = 'luggster-ops'
+name = 'Luggster-Ops'
 main = "Ops-Console.js"
 compatibility_date = "2024-01-01"
 
