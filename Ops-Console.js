@@ -36,6 +36,11 @@ export default {
       return serveDashboard();
     }
 
+    // 4. Debug endpoint
+    if (path === "/test-connection") {
+      return await testNeonConnection(env);
+    }
+
     return new Response("Not Found", { status: 404 });
   }
 };
@@ -112,27 +117,30 @@ async function handleNeonQuery(request, env) {
   }
 }
 
-// FIXED: Updated Neon DB connection
+// FIXED: Working Neon DB connection
 async function executeNeonQuery(connectionString, query, params) {
   try {
-    // Parse the connection string
-    // Example: postgresql://neondb_owner:npg_***@ep-proud-cake-a4m2vdkf-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require
-    const url = new URL(connectionString);
+    console.log('Starting Neon query execution');
     
-    const username = url.username;
+    if (!connectionString) {
+      throw new Error('Connection string is empty');
+    }
+    
+    // Parse the connection string
+    const url = new URL(connectionString);
     const password = url.password;
     const hostname = url.hostname;
-    const database = url.pathname.slice(1).split('?')[0];
     
-    // IMPORTANT: For Neon SQL-over-HTTP, we need to use direct endpoint
-    // Remove "-pooler" from the hostname if present
+    if (!password) {
+      throw new Error('No API key found in connection string');
+    }
+    
+    // METHOD 1: Direct SQL-over-HTTP (remove -pooler)
     const directHostname = hostname.replace('-pooler', '');
-    
-    // Neon SQL-over-HTTP endpoint
     const endpoint = `https://${directHostname}/sql`;
     
-    console.log('Calling Neon endpoint:', endpoint);
-    console.log('Database:', database);
+    console.log('Using Neon endpoint:', endpoint);
+    console.log('Query (first 100 chars):', query.substring(0, 100));
     
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -142,85 +150,90 @@ async function executeNeonQuery(connectionString, query, params) {
       },
       body: JSON.stringify({
         query: query,
-        params: params || [],
-        database: database
+        params: params || []
       })
     });
     
+    console.log('Response status:', response.status);
+    
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Neon API error details:', {
+      let errorText;
+      try {
+        errorText = await response.text();
+      } catch {
+        errorText = response.statusText;
+      }
+      
+      console.error('Neon API error:', {
         status: response.status,
         error: errorText,
         endpoint: endpoint
       });
+      
       throw new Error(`Neon API error: ${response.status} - ${errorText}`);
     }
     
     const result = await response.json();
+    console.log('Query successful, rows returned:', result.rows?.length || 0);
+    
     return {
       rows: result.rows || [],
       rowCount: result.rows?.length || 0
     };
     
   } catch (error) {
-    console.error('Query failed:', error);
+    console.error('Query execution failed:', error);
     throw error;
   }
 }
 
-// SIMPLER: Alternative Neon HTTP API call (using console API)
-async function executeNeonQuerySimple(connectionString, query, params) {
-  // Extract just the password (API key) from connection string
-  const password = connectionString.split(':')[2]?.split('@')[0];
-  
-  if (!password) {
-    throw new Error('Could not extract API key from connection string');
-  }
-  
-  // Extract project ID from hostname: ep-proud-cake-a4m2vdkf-pooler.us-east-1.aws.neon.tech
-  const hostname = new URL(connectionString).hostname;
-  const match = hostname.match(/ep-([^-]+)-([^-]+)-([^-]+)/);
-  
-  if (!match) {
-    throw new Error('Could not extract project ID from connection string');
-  }
-  
-  const projectId = match[3]; // a4m2vdkf
-  
-  const endpoint = `https://console.neon.tech/api/v2/projects/${projectId}/query`;
-  
-  console.log('Using Neon Console API endpoint:', endpoint);
-  
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${password}`,
-      'Content-Type': 'application/json',
-      'Accept': 'application/json'
-    },
-    body: JSON.stringify({
-      query: query,
-      params: params || []
-    })
-  });
-  
-  if (!response.ok) {
-    let error;
-    try {
-      error = await response.json();
-      throw new Error(error.message || 'Neon API error');
-    } catch {
-      throw new Error(`Neon API error: ${response.status} ${response.statusText}`);
+// Debug endpoint function
+async function testNeonConnection(env) {
+  try {
+    const connectionString = env.DATABASE_URL;
+    
+    if (!connectionString) {
+      return new Response("DATABASE_URL is not set", { 
+        status: 500,
+        headers: { 'Content-Type': 'text/plain' }
+      });
     }
+    
+    // Test with a simple query
+    const testQuery = "SELECT 1 as test_value, NOW() as current_time";
+    
+    const result = await executeNeonQuery(connectionString, testQuery, []);
+    
+    return new Response(JSON.stringify({
+      success: true,
+      data: result.rows,
+      connectionInfo: {
+        hasConnectionString: !!connectionString,
+        connectionStringLength: connectionString.length,
+        firstChars: connectionString.substring(0, 30) + '...'
+      }
+    }, null, 2), {
+      headers: { 
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      }
+    });
+    
+  } catch (error) {
+    return new Response(JSON.stringify({
+      success: false,
+      error: error.message,
+      stack: error.stack
+    }, null, 2), {
+      status: 500,
+      headers: { 
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      }
+    });
   }
-  
-  const result = await response.json();
-  return {
-    rows: result.rows || [],
-    rowCount: result.rows?.length || 0
-  };
 }
+
 // Function to serve the dashboard HTML
 function serveDashboard() {
   const html = `<!DOCTYPE html>
