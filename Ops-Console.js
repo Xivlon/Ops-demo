@@ -398,7 +398,7 @@ function serveDashboard() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
                     query: \`SELECT 
-                      user_id as id,
+                      id,
                       email,
                       CONCAT(first_name, ' ', last_name) as name,
                       is_online
