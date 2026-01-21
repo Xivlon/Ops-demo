@@ -582,41 +582,34 @@ function serveDashboard() {
             const dateStr = d.toLocaleDateString([], {month:'short', day:'numeric'});
             const timeStr = d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
 
-            return \`
-                <tr class="hover:bg-slate-800 transition-colors border-b border-slate-700/50 group">
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <div class="font-mono text-xs text-slate-500 group-hover:text-slate-300 transition-colors">#\${s.id.slice(0,8)}</div>
-                    </td>
-                    
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <div class="text-sm font-medium text-slate-300">\${dateStr}</div>
-                        <div class="text-[10px] text-slate-500">\${timeStr}</div>
-                    </td>
-
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border \${badgeClass}">
-                            \${s.status}
-                        </span>
-                    </td>
-
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        \${driverHtml}
-                    </td>
-
-                    <td class="px-6 py-4 whitespace-nowrap text-xs text-slate-300">
-                        <div class="flex items-center gap-2">
-                            \${fmtLoc(s, 'pickup')}
-                            <i data-lucide="arrow-right" class="w-3 h-3 text-slate-600"></i>
-                            \${fmtLoc(s, 'dropoff')}
-                        </div>
-                    </td>
-
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        \${customerInfoHtml}
-                    </td>
-                </tr>
-            \`;
-        }).join('');
+        return '<tr class="hover:bg-slate-800 transition-colors border-b border-slate-700/50 group">' +
+                 '<td class="px-6 py-4 whitespace-nowrap">' +
+                 '<div class="font-mono text-xs text-slate-500 group-hover:text-slate-300 transition-colors">#' + s.id.slice(0,8) + '</div>' +
+                 '</td>' +
+                 '<td class="px-6 py-4 whitespace-nowrap">' +
+                 '<div class="text-sm font-medium text-slate-300">' + dateStr + '</div>' +
+                 '<div class="text-[10px] text-slate-500">' + timeStr + '</div>' +
+                 '</td>' +
+                 '<td class="px-6 py-4 whitespace-nowrap">' +
+                 '<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border ' + badgeClass + '">' +
+                 s.status +
+                 '</span>' +
+                 '</td>' +
+                 '<td class="px-6 py-4 whitespace-nowrap">' +
+                 driverHtml +
+                 '</td>' +
+                 '<td class="px-6 py-4 whitespace-nowrap text-xs text-slate-300">' +
+                 '<div class="flex items-center gap-2">' +
+                 fmtLoc(s, 'pickup') +
+                 '<i data-lucide="arrow-right" class="w-3 h-3 text-slate-600"></i>' +
+                 fmtLoc(s, 'dropoff') +
+                 '</div>' +
+                 '</td>' +
+                 '<td class="px-6 py-4 whitespace-nowrap">' +
+                 customerInfoHtml +
+                 '</td>' +
+                 '</tr>';
+            }).join('');
         
         lucide.createIcons();
     }
