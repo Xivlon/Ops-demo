@@ -400,7 +400,7 @@ function serveDashboard() {
                     query: \`SELECT 
                       user_id as id,
                       email,
-                      CONCAT(first_name, ' ', last_name) as name,
+                      CONTACT(first_name, ' ', last_name) as name,
                       is_online
                     FROM driver_profiles
                     ORDER BY is_online DESC, first_name ASC\`
