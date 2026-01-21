@@ -348,24 +348,23 @@ function serveDashboard() {
     }
 
     async function loadStats() {
-        try {
-            const res = await fetch('/api/neon-query', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    query: \`SELECT 
-                      COUNT(*) FILTER (WHERE status = 'PENDING') as pending,
-                      COUNT(*) FILTER (WHERE status = 'ASSIGNED') as assigned,
-                      COUNT(*) FILTER (WHERE status = 'PICKED_UP') as picked_up,
-                      COUNT(*) FILTER (WHERE status = 'DELIVERED') as delivered,
-                      COALESCE(SUM(price_cents), 0) / 100.0 as total_revenue,
-                      (SELECT COUNT(*) FROM driver_profiles WHERE is_online = true) as online_drivers,
-                      (SELECT COUNT(*) FROM driver_profiles) as total_drivers
-                    FROM shipments
-                    WHERE created_at > NOW() - INTERVAL '30 days'\`
-                })
-            });
-            
+    try {
+        const res = await fetch('/api/neon-query', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                query: `SELECT 
+                  COUNT(*) FILTER (WHERE status = 'PENDING') as pending,
+                  COUNT(*) FILTER (WHERE status = 'ASSIGNED') as assigned,
+                  COUNT(*) FILTER (WHERE status = 'PICKED_UP') as picked_up,
+                  COUNT(*) FILTER (WHERE status = 'DELIVERED') as delivered,
+                  COALESCE(SUM(price_cents), 0) / 100.0 as total_revenue,
+                  (SELECT COUNT(*) FROM driver_profiles WHERE is_online = true) as online_drivers,
+                  (SELECT COUNT(*) FROM driver_profiles) as total_drivers
+                FROM shipments
+                WHERE created_at > NOW() - INTERVAL '30 days'`
+            })
+        });
             const data = await res.json();
             
             const makeCard = (label, val, color) => {
@@ -397,13 +396,13 @@ function serveDashboard() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
-                    query: \`SELECT 
+                    query: `SELECT 
                       id,
                       email,
                       CONCAT(first_name, ' ', last_name) as name,
                       is_online
                     FROM driver_profiles
-                    ORDER BY is_online DESC, first_name ASC\`
+                    ORDER BY is_online DESC, first_name ASC`
                 })
             });
             
@@ -422,7 +421,7 @@ function serveDashboard() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
-                    query: \`SELECT 
+                    query: `SELECT 
                       s.id,
                       s.created_at,
                       s.status,
@@ -444,7 +443,7 @@ function serveDashboard() {
                     LEFT JOIN driver_profiles dp ON s.driver_id = dp.id
                     WHERE s.created_at > NOW() - INTERVAL '30 days'
                     ORDER BY s.created_at DESC
-                    LIMIT 100\`
+                    LIMIT 100`
                 })
             });
             
