@@ -306,8 +306,8 @@ function serveDashboard() {
               <th onclick="sortTable(4)" class="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
                 Route <span class="sort-indicator text-green-400" data-sort-key="4"></span>
               </th>
-              <th class="px-6 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">
-                Actions
+              <th class="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                Customer Info
               </th>
             </tr>
           </thead>
@@ -557,14 +557,17 @@ function serveDashboard() {
                 driverHtml = '<span class="text-slate-600 text-xs italic">Unassigned</span>';
             }
 
-            // Proof Logic
-            let proofs = [];
-            const pickUrl = s.pickup_photo_url;
-            const dropUrl = s.delivery_photo_url;
+            // Customer Info Logic
+            let customerInfoParts = [];
+            const custName = s.customer_name || 'Customer';
+            const custEmail = s.customer_email;
+            const custPhone = s.customer_phone;
             
-            if (pickUrl) proofs.push('<a href="' + pickUrl + '" target="_blank" class="p-1 rounded bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 hover:text-white transition-colors" title="Pickup"><i data-lucide="camera" class="w-4 h-4"></i></a>');
-            if (dropUrl) proofs.push('<a href="' + dropUrl + '" target="_blank" class="p-1 rounded bg-green-500/10 text-green-400 hover:bg-green-500/20 hover:text-white transition-colors" title="Delivery"><i data-lucide="check-square" class="w-4 h-4"></i></a>');
-            const proofHtml = proofs.length ? '<div class="flex gap-2 justify-end">' + proofs.join('') + '</div>' : '<span class="text-slate-700 text-xs">--</span>';
+            customerInfoParts.push('<div class="text-sm font-medium text-slate-300">' + custName + '</div>');
+            if (custEmail) customerInfoParts.push('<div class="text-xs text-slate-400">' + custEmail + '</div>');
+            if (custPhone) customerInfoParts.push('<div class="text-xs text-slate-400">' + custPhone + '</div>');
+            
+            const customerInfoHtml = '<div class="flex flex-col gap-0.5">' + customerInfoParts.join('') + '</div>';
 
             // Date Formatting
             const d = new Date(s.created_at);
@@ -600,8 +603,8 @@ function serveDashboard() {
                         </div>
                     </td>
 
-                    <td class="px-6 py-4 whitespace-nowrap text-right">
-                        \${proofHtml}
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        \${customerInfoHtml}
                     </td>
                 </tr>
             \`;
