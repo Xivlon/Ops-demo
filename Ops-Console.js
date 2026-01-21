@@ -434,10 +434,13 @@ function serveDashboard() {
                       s.pickup_photo_url,
                       s.delivery_photo_url,
                       s.price_cents,
-                      CONCAT(cust.first_name, ' ', cust.last_name) as customer_name,
+                      COALESCE(s.customer_name, 'Customer') as customer_name,
+                      s.customer_email,
+                      s.customer_phone,
+                      s.luggage_description,
+                      s.special_instructions,
                       CONCAT(dp.first_name, ' ', dp.last_name) as driver_name
                     FROM shipments s
-                    JOIN driver_profiles cust ON s.customer_id = cust.id
                     LEFT JOIN driver_profiles dp ON s.driver_id = dp.id
                     WHERE s.created_at > NOW() - INTERVAL '30 days'
                     ORDER BY s.created_at DESC
