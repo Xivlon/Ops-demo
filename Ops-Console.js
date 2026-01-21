@@ -1,4 +1,3 @@
-// Add this import at the top of your file
 import { neon } from '@neondatabase/serverless';
 
 export default {
@@ -360,8 +359,8 @@ function serveDashboard() {
                       COUNT(*) FILTER (WHERE status = 'PICKED_UP') as picked_up,
                       COUNT(*) FILTER (WHERE status = 'DELIVERED') as delivered,
                       COALESCE(SUM(price_cents), 0) / 100.0 as total_revenue,
-                      (SELECT COUNT(*) FROM users WHERE is_online = true AND user_type = 'driver') as online_drivers,
-                      (SELECT COUNT(*) FROM users WHERE user_type = 'driver') as total_drivers
+                      (SELECT COUNT(*) FROM driver_profiles WHERE is_online = true) as online_drivers,
+                      (SELECT COUNT(*) FROM driver_profiles) as total_drivers
                     FROM shipments
                     WHERE created_at > NOW() - INTERVAL '30 days'\`
                 })
@@ -409,7 +408,7 @@ function serveDashboard() {
                       email,
                       CONCAT(first_name, ' ', last_name) as name,
                       is_online
-                    FROM users
+                    FROM driver_profiles
                     WHERE user_type = 'driver'
                     ORDER BY is_online DESC, first_name ASC\`
                 })
@@ -446,9 +445,10 @@ function serveDashboard() {
                       s.customer_email,
                       s.customer_phone,
                       s.luggage_description,
-                      CONCAT(u.first_name, ' ', u.last_name) as driver_name
+                      s.special_instructions,
+                      CONCAT(dp.first_name, ' ', dp.last_name) as driver_name
                     FROM shipments s
-                    LEFT JOIN users u ON s.driver_id = u.id
+                    LEFT JOIN driver_profiles dp ON s.driver_id = dp.id
                     WHERE s.created_at > NOW() - INTERVAL '30 days'
                     ORDER BY s.created_at DESC
                     LIMIT 100\`
