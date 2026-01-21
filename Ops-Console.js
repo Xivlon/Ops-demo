@@ -1,3 +1,6 @@
+// Add this import at the top of your file
+import { neon } from '@neondatabase/serverless';
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -195,7 +198,7 @@ async function testConnection(env) {
   }
 }
 
-// Function to serve the dashboard HTML (keep your existing HTML)
+// Function to serve the dashboard HTML
 function serveDashboard() {
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -332,8 +335,6 @@ function serveDashboard() {
   </div>
 
   <script>
-    const BACKEND_URL = ""; // Same origin
-    
     lucide.createIcons();
     
     // Global State
@@ -359,8 +360,8 @@ function serveDashboard() {
                       COUNT(*) FILTER (WHERE status = 'PICKED_UP') as picked_up,
                       COUNT(*) FILTER (WHERE status = 'DELIVERED') as delivered,
                       COALESCE(SUM(price_cents), 0) / 100.0 as total_revenue,
-                      (SELECT COUNT(*) FROM driver_profiles WHERE is_online = true) as online_drivers,
-                      (SELECT COUNT(*) FROM driver_profiles) as total_drivers
+                      (SELECT COUNT(*) FROM users WHERE is_online = true AND user_type = 'driver') as online_drivers,
+                      (SELECT COUNT(*) FROM users WHERE user_type = 'driver') as total_drivers
                     FROM shipments
                     WHERE created_at > NOW() - INTERVAL '30 days'\`
                 })
@@ -385,8 +386,14 @@ function serveDashboard() {
                 makeCard('Revenue', '$' + parseFloat(data.rows?.[0]?.total_revenue || 0).toFixed(2), 'emerald') +
                 makeCard('Active Drivers', (data.rows?.[0]?.online_drivers || 0) + '/' + (data.rows?.[0]?.total_drivers || 0), 'orange');
 
+            // Update status indicator
+            document.getElementById('status-indicator').className = "w-2 h-2 rounded-full bg-green-500";
+            document.getElementById('status-text').innerText = "Connected";
+
         } catch (e) { 
             console.warn("Stats error", e);
+            document.getElementById('status-indicator').className = "w-2 h-2 rounded-full bg-red-500";
+            document.getElementById('status-text').innerText = "Connection Error";
             showToast("Failed to load statistics", "red");
         }
     }
@@ -402,7 +409,8 @@ function serveDashboard() {
                       email,
                       CONCAT(first_name, ' ', last_name) as name,
                       is_online
-                    FROM driver_profiles
+                    FROM users
+                    WHERE user_type = 'driver'
                     ORDER BY is_online DESC, first_name ASC\`
                 })
             });
@@ -434,14 +442,13 @@ function serveDashboard() {
                       s.pickup_photo_url,
                       s.delivery_photo_url,
                       s.price_cents,
-                      COALESCE(s.customer_name, 'Customer') as customer_name,
+                      s.customer_name,
                       s.customer_email,
                       s.customer_phone,
                       s.luggage_description,
-                      s.special_instructions,
-                      CONCAT(dp.first_name, ' ', dp.last_name) as driver_name
+                      CONCAT(u.first_name, ' ', u.last_name) as driver_name
                     FROM shipments s
-                    LEFT JOIN driver_profiles dp ON s.driver_id = dp.id
+                    LEFT JOIN users u ON s.driver_id = u.id
                     WHERE s.created_at > NOW() - INTERVAL '30 days'
                     ORDER BY s.created_at DESC
                     LIMIT 100\`
@@ -555,7 +562,7 @@ function serveDashboard() {
                     driverHtml = '<span class="text-red-400 text-xs italic opacity-75">No Drivers Online</span>';
                 }
             } else if (dId) {
-                const dName = s.driver_name || 'ID: ' + dId.slice(0,5);
+                const dName = s.driver_name || 'ID: ' + (dId?.slice(0,5) || 'N/A');
                 driverHtml = 
                     '<div class="flex items-center gap-1.5 text-indigo-400">' +
                         '<i data-lucide="user" class="w-3 h-3"></i>' +
@@ -584,7 +591,7 @@ function serveDashboard() {
 
         return '<tr class="hover:bg-slate-800 transition-colors border-b border-slate-700/50 group">' +
                  '<td class="px-6 py-4 whitespace-nowrap">' +
-                 '<div class="font-mono text-xs text-slate-500 group-hover:text-slate-300 transition-colors">#' + s.id.slice(0,8) + '</div>' +
+                 '<div class="font-mono text-xs text-slate-500 group-hover:text-slate-300 transition-colors">#' + (s.id?.slice(0,8) || 'N/A') + '</div>' +
                  '</td>' +
                  '<td class="px-6 py-4 whitespace-nowrap">' +
                  '<div class="text-sm font-medium text-slate-300">' + dateStr + '</div>' +
