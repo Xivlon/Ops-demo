@@ -463,6 +463,14 @@ function serveDashboard() {
         }
     }
 
+    // --- HTML ESCAPE FUNCTION ---
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
     // --- SMART LOCATION FORMATTER ---
     function fmtLoc(s, type) {
         const code = type === 'pickup' ? s.origin_airport : s.destination_airport;
@@ -559,9 +567,9 @@ function serveDashboard() {
 
             // Customer Info Logic
             let customerInfoParts = [];
-            const custName = s.customer_name || 'Customer';
-            const custEmail = s.customer_email;
-            const custPhone = s.customer_phone;
+            const custName = escapeHtml(s.customer_name) || 'Customer';
+            const custEmail = escapeHtml(s.customer_email);
+            const custPhone = escapeHtml(s.customer_phone);
             
             customerInfoParts.push('<div class="text-sm font-medium text-slate-300">' + custName + '</div>');
             if (custEmail) customerInfoParts.push('<div class="text-xs text-slate-400">' + custEmail + '</div>');
