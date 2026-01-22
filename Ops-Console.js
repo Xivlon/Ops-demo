@@ -35,10 +35,10 @@ export default {
     if (path === "/api/neon-query" && request.method === "POST") {
       // Check PIN authentication for API
       if (pinParam !== adminPin) {
-        return new Response("Unauthorized Access", { 
+        return new Response(JSON.stringify({ error: "Unauthorized Access", code: "UNAUTHORIZED" }), { 
           status: 401,
           headers: { 
-            'Content-Type': 'text/plain',
+            'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*'
           }
         });
@@ -50,10 +50,10 @@ export default {
     if (path === "/api/driver-stats" && request.method === "POST") {
       // Check PIN authentication for API
       if (pinParam !== adminPin) {
-        return new Response("Unauthorized Access", { 
+        return new Response(JSON.stringify({ error: "Unauthorized Access", code: "UNAUTHORIZED" }), { 
           status: 401,
           headers: { 
-            'Content-Type': 'text/plain',
+            'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*'
           }
         });
@@ -65,10 +65,10 @@ export default {
     if (path.startsWith("/api/driver-timeline/") && request.method === "POST") {
       // Check PIN authentication for API
       if (pinParam !== adminPin) {
-        return new Response("Unauthorized Access", { 
+        return new Response(JSON.stringify({ error: "Unauthorized Access", code: "UNAUTHORIZED" }), { 
           status: 401,
           headers: { 
-            'Content-Type': 'text/plain',
+            'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*'
           }
         });
@@ -450,7 +450,7 @@ function serveDashboard(pin) {
 
     async function loadStats() {
         try {
-            const res = await fetch('/api/neon-query', {
+            const res = await fetch(\`/api/neon-query?pin=${pin}\`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
@@ -502,7 +502,7 @@ function serveDashboard(pin) {
 
     async function loadDrivers() {
         try {
-            const res = await fetch('/api/neon-query', {
+            const res = await fetch(\`/api/neon-query?pin=${pin}\`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
@@ -528,7 +528,7 @@ function serveDashboard(pin) {
     async function loadShipments() {
         const tbody = document.getElementById('table-body');
         try {
-            const res = await fetch('/api/neon-query', {
+            const res = await fetch(\`/api/neon-query?pin=${pin}\`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
@@ -744,7 +744,7 @@ function serveDashboard(pin) {
 
         try {
             select.disabled = true;
-            const res = await fetch('/api/neon-query', {
+            const res = await fetch(\`/api/neon-query?pin=${pin}\`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
