@@ -460,8 +460,8 @@ function serveDashboard(pin) {
                       COUNT(*) FILTER (WHERE status = 'PICKED_UP') as picked_up,
                       COUNT(*) FILTER (WHERE status = 'DELIVERED') as delivered,
                       COALESCE(SUM(price_cents), 0) / 100.0 as total_revenue,
-                      (SELECT COUNT(*) FROM driver_profiles WHERE is_online = true) as online_drivers,
-                      (SELECT COUNT(*) FROM driver_profiles) as total_drivers
+                      (SELECT COUNT(*) FROM driver_profiles WHERE is_online = true AND user_type = 'driver') as online_drivers,
+                      (SELECT COUNT(*) FROM driver_profiles WHERE user_type = 'driver') as total_drivers
                     FROM shipments
                     WHERE created_at > NOW() - INTERVAL '30 days'\`
                 })
@@ -1013,6 +1013,7 @@ function serveDriverStats(pin) {
 
             FROM driver_profiles dp
             LEFT JOIN shipments s ON s.driver_id = dp.id
+            WHERE dp.user_type = 'driver'
             GROUP BY dp.id, dp.first_name, dp.last_name, dp.email, dp.is_online, dp.profile_photo_url
             ORDER BY total_completed DESC\`
           })
