@@ -35,10 +35,10 @@ export default {
     if (path === "/api/neon-query" && request.method === "POST") {
       // Check PIN authentication for API
       if (pinParam !== adminPin) {
-        return new Response("Unauthorized Access", { 
+        return new Response(JSON.stringify({ error: "Unauthorized Access", code: "UNAUTHORIZED" }), { 
           status: 401,
           headers: { 
-            'Content-Type': 'text/plain',
+            'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*'
           }
         });
@@ -50,10 +50,10 @@ export default {
     if (path === "/api/driver-stats" && request.method === "POST") {
       // Check PIN authentication for API
       if (pinParam !== adminPin) {
-        return new Response("Unauthorized Access", { 
+        return new Response(JSON.stringify({ error: "Unauthorized Access", code: "UNAUTHORIZED" }), { 
           status: 401,
           headers: { 
-            'Content-Type': 'text/plain',
+            'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*'
           }
         });
@@ -65,10 +65,10 @@ export default {
     if (path.startsWith("/api/driver-timeline/") && request.method === "POST") {
       // Check PIN authentication for API
       if (pinParam !== adminPin) {
-        return new Response("Unauthorized Access", { 
+        return new Response(JSON.stringify({ error: "Unauthorized Access", code: "UNAUTHORIZED" }), { 
           status: 401,
           headers: { 
-            'Content-Type': 'text/plain',
+            'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*'
           }
         });
