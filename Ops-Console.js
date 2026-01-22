@@ -471,7 +471,7 @@ function serveDashboard(pin) {
             
             const makeCard = (label, val, color, clickable = false) => {
                 const cursor = clickable ? 'cursor-pointer' : '';
-                const onclick = clickable ? \`onclick="window.location.href='/drivers?pin=${new URLSearchParams(window.location.search).get('pin')}'" \` : '';
+                const onclick = clickable ? \`onclick="window.location.href='/drivers?pin=${pin}'" \` : '';
                 return '<div ' + onclick + 'class="bg-slate-800 rounded-xl p-4 border border-slate-700 relative overflow-hidden group hover:border-' + color + '-500/50 transition-colors ' + cursor + '">' +
                        '<div class="absolute top-0 right-0 w-16 h-16 bg-' + color + '-500/10 rounded-bl-full -mr-2 -mt-2 transition-transform group-hover:scale-110"></div>' +
                        '<div class="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">' + label + '</div>' +
@@ -1212,7 +1212,7 @@ function serveDriverStats(pin) {
 
     async function loadDriverTimeline(driverId) {
       try {
-        const res = await fetch(\`/api/driver-timeline/\${driverId}?pin=${new URLSearchParams(window.location.search).get('pin')}\`, {
+        const res = await fetch(\`/api/driver-timeline/\${driverId}?pin=${pin}\`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
