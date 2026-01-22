@@ -18,7 +18,10 @@ export default {
 
     // 1. Security Check
     const adminPin = env.ADMIN_PIN || "1234";
-    if ((path === "/" || path === "/drivers") && url.searchParams.get("pin") !== adminPin) {
+    const pinParam = url.searchParams.get("pin");
+    
+    // Check PIN for page routes
+    if ((path === "/" || path === "/drivers") && pinParam !== adminPin) {
       return new Response("Unauthorized Access", { 
         status: 401,
         headers: { 
@@ -30,16 +33,73 @@ export default {
 
     // 2. Handle API requests for Neon DB queries
     if (path === "/api/neon-query" && request.method === "POST") {
+      // Check PIN authentication for API
+      if (pinParam !== adminPin) {
+        return new Response("Unauthorized Access", { 
+          status: 401,
+          headers: { 
+            'Content-Type': 'text/plain',
+            'Access-Control-Allow-Origin': '*'
+          }
+        });
+      }
       return await handleNeonQuery(request, env);
     }
 
     // 3. Handle driver stats API
     if (path === "/api/driver-stats" && request.method === "POST") {
+      // Check PIN authentication for API
+      if (pinParam !== adminPin) {
+        return new Response("Unauthorized Access", { 
+          status: 401,
+          headers: { 
+            'Content-Type': 'text/plain',
+            'Access-Control-Allow-Origin': '*'
+          }
+        });
+      }
       return await handleNeonQuery(request, env);
     }
 
     // 4. Handle driver timeline API
     if (path.startsWith("/api/driver-timeline/") && request.method === "POST") {
+      // Check PIN authentication for API
+      if (pinParam !== adminPin) {
+        return new Response("Unauthorized Access", { 
+          status: 401,
+          headers: { 
+            'Content-Type': 'text/plain',
+            'Access-Control-Allow-Origin': '*'
+          }
+        });
+      }
+      
+      // Extract and validate driverId from URL path
+      const pathSegments = path.split("/");
+      const driverIdFromPath = pathSegments[3] || null;
+      
+      if (!driverIdFromPath) {
+        return new Response(JSON.stringify({ error: "Missing driverId in URL path" }), {
+          status: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          }
+        });
+      }
+      
+      // Validate UUID format (basic check)
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(driverIdFromPath)) {
+        return new Response(JSON.stringify({ error: "Invalid driverId format" }), {
+          status: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          }
+        });
+      }
+      
       return await handleNeonQuery(request, env);
     }
 
@@ -222,6 +282,9 @@ function serveDashboard(pin) {
   <title>LuggageLink Ops</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
+    // NOTE: This Tailwind configuration is duplicated in both serveDashboard() and serveDriverStats()
+    // functions. This is intentional for the single-file Cloudflare Worker architecture.
+    // Any theme changes must be updated in both locations to maintain consistency.
     tailwind.config = {
       theme: {
         extend: {
@@ -743,6 +806,9 @@ function serveDriverStats(pin) {
   <title>Driver Performance - LuggageLink Ops</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
+    // NOTE: This Tailwind configuration is duplicated in both serveDashboard() and serveDriverStats()
+    // functions. This is intentional for the single-file Cloudflare Worker architecture.
+    // Any theme changes must be updated in both locations to maintain consistency.
     tailwind.config = {
       theme: {
         extend: {
@@ -849,9 +915,14 @@ function serveDriverStats(pin) {
         </select>
       </div>
       
-      <button onclick="refreshData()" class="ml-auto group bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-200 px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2">
+      <button onclick="refreshData()" class="group bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-200 px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2">
         <i data-lucide="refresh-cw" class="w-4 h-4 group-hover:rotate-180 transition-transform duration-500"></i>
         Refresh
+      </button>
+      
+      <button id="autoRefreshToggle" onclick="toggleAutoRefresh()" class="group bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-200 px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2">
+        <i data-lucide="pause" class="w-4 h-4"></i>
+        <span id="autoRefreshText">Pause Auto-refresh</span>
       </button>
     </div>
 
@@ -873,6 +944,37 @@ function serveDriverStats(pin) {
     // Global State
     let allDrivers = [];
     let charts = {};
+    let autoRefreshInterval = null;
+    let autoRefreshEnabled = true;
+
+    // Escape HTML to prevent XSS
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+    
+    function toggleAutoRefresh() {
+      autoRefreshEnabled = !autoRefreshEnabled;
+      const btn = document.getElementById('autoRefreshToggle');
+      const text = document.getElementById('autoRefreshText');
+      const icon = btn.querySelector('i');
+      
+      if (autoRefreshEnabled) {
+        text.innerText = 'Pause Auto-refresh';
+        icon.setAttribute('data-lucide', 'pause');
+        autoRefreshInterval = setInterval(refreshData, 60000);
+      } else {
+        text.innerText = 'Resume Auto-refresh';
+        icon.setAttribute('data-lucide', 'play');
+        if (autoRefreshInterval) {
+          clearInterval(autoRefreshInterval);
+          autoRefreshInterval = null;
+        }
+      }
+      lucide.createIcons();
+    }
 
     async function refreshData() {
       await loadDriverStats();
@@ -904,14 +1006,13 @@ function serveDriverStats(pin) {
                 WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED', 'FAILED')) > 0
                 THEN (COUNT(*) FILTER (WHERE s.status = 'DELIVERED')::float / 
                       COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED', 'FAILED'))::float * 100)
-                ELSE 100
+                ELSE NULL
               END as success_rate,
               
               COALESCE(AVG(s.rating), 0) as avg_rating
 
             FROM driver_profiles dp
             LEFT JOIN shipments s ON s.driver_id = dp.id
-            WHERE dp.user_type = 'driver'
             GROUP BY dp.id, dp.first_name, dp.last_name, dp.email, dp.is_online, dp.profile_photo_url
             ORDER BY total_completed DESC\`
           })
@@ -983,22 +1084,42 @@ function serveDriverStats(pin) {
       }
       
       grid.innerHTML = drivers.map(driver => {
-        const name = \`\${driver.first_name || ''} \${driver.last_name || ''}\`.trim() || 'Unknown Driver';
-        const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+        const firstName = driver.first_name || '';
+        const lastName = driver.last_name || '';
+        const name = \`\${firstName} \${lastName}\`.trim() || 'Unknown Driver';
+        
+        // Improved initials handling with fallback
+        const initials = name.split(' ')
+          .map(n => n[0] || '')
+          .filter(c => c)
+          .join('')
+          .toUpperCase()
+          .slice(0, 2) || '??';
+        
         const onlineStatus = driver.is_online ? 
           '<span class="flex items-center gap-1 text-xs text-green-400"><span class="w-2 h-2 bg-green-500 rounded-full"></span>Online</span>' :
           '<span class="flex items-center gap-1 text-xs text-slate-500"><span class="w-2 h-2 bg-slate-500 rounded-full"></span>Offline</span>';
         
-        const successRate = driver.success_rate || 100;
+        // Handle NULL success_rate (no shipments)
+        const successRate = driver.success_rate !== null && driver.success_rate !== undefined 
+          ? driver.success_rate 
+          : null;
         const weekCompleted = driver.week_completed || 0;
         
+        // Fixed performance classification with clear, non-overlapping conditions
         let performanceClass = 'performance-average';
         let performanceBadge = '<span class="text-xs bg-yellow-500/20 text-yellow-400 px-2 py-1 rounded">Average</span>';
         
-        if (successRate >= 90 && weekCompleted >= 20) {
+        if (successRate === null) {
+          // No shipment data
+          performanceClass = 'performance-average';
+          performanceBadge = '<span class="text-xs bg-slate-500/20 text-slate-400 px-2 py-1 rounded">No Data</span>';
+        } else if (successRate >= 90 && weekCompleted >= 20) {
+          // High performer: great success rate AND high activity
           performanceClass = 'performance-high';
           performanceBadge = '<span class="text-xs bg-green-500/20 text-green-400 px-2 py-1 rounded">High Performer</span>';
         } else if (successRate < 70 || weekCompleted < 5) {
+          // Needs attention: poor success rate OR low activity
           performanceClass = 'performance-low';
           performanceBadge = '<span class="text-xs bg-red-500/20 text-red-400 px-2 py-1 rounded">Needs Attention</span>';
         }
@@ -1008,6 +1129,11 @@ function serveDriverStats(pin) {
         
         const lastActive = driver.last_active ? new Date(driver.last_active).toLocaleString() : 'Never';
         
+        // Display success rate with proper handling of NULL
+        const successRateDisplay = successRate !== null 
+          ? successRate.toFixed(1) + '%' 
+          : 'N/A';
+        
         return \`
           <div class="driver-card bg-slate-800 rounded-xl p-6 border-2 \${performanceClass} shadow-lg">
             <!-- Header -->
@@ -1016,8 +1142,8 @@ function serveDriverStats(pin) {
                 \${initials}
               </div>
               <div class="flex-1">
-                <h3 class="text-lg font-bold text-slate-100">\${name}</h3>
-                <p class="text-xs text-slate-400">\${driver.email || 'No email'}</p>
+                <h3 class="text-lg font-bold text-slate-100">\${escapeHtml(name)}</h3>
+                <p class="text-xs text-slate-400">\${escapeHtml(driver.email || 'No email')}</p>
                 <div class="flex items-center gap-3 mt-1">
                   \${onlineStatus}
                   \${performanceBadge}
@@ -1041,7 +1167,7 @@ function serveDriverStats(pin) {
               
               <div class="bg-slate-900/50 rounded-lg p-3 border border-slate-700">
                 <div class="text-xs text-slate-400 mb-1">Success Rate</div>
-                <div class="text-2xl font-bold text-blue-400">\${successRate.toFixed(1)}%</div>
+                <div class="text-2xl font-bold text-blue-400">\${successRateDisplay}</div>
                 <div class="text-xs text-slate-500">\${driver.total_failed || 0} failed</div>
               </div>
               
@@ -1061,10 +1187,21 @@ function serveDriverStats(pin) {
             <div class="bg-slate-900/50 rounded-lg p-3 border border-slate-700">
               <div class="text-xs text-slate-400 mb-2">30-Day Performance</div>
               <canvas id="chart-\${driver.id}" class="w-full" height="120"></canvas>
+              <div id="chart-error-\${driver.id}" class="text-xs text-red-400 mt-2 hidden">Failed to load timeline data</div>
             </div>
           </div>
         \`;
       }).join('');
+      
+      // Clean up charts for drivers no longer displayed
+      Object.keys(charts).forEach(driverId => {
+        if (!drivers.find(d => String(d.id) === String(driverId))) {
+          if (charts[driverId]) {
+            charts[driverId].destroy();
+            delete charts[driverId];
+          }
+        }
+      });
       
       // Render charts for each driver
       lucide.createIcons();
@@ -1075,7 +1212,7 @@ function serveDriverStats(pin) {
 
     async function loadDriverTimeline(driverId) {
       try {
-        const res = await fetch(\`/api/driver-timeline/\${driverId}\`, {
+        const res = await fetch(\`/api/driver-timeline/\${driverId}?pin=${new URLSearchParams(window.location.search).get('pin')}\`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
@@ -1099,6 +1236,11 @@ function serveDriverStats(pin) {
         
       } catch (e) {
         console.error('Timeline error for driver', driverId, e);
+        // Show error message in the UI
+        const errorDiv = document.getElementById(\`chart-error-\${driverId}\`);
+        if (errorDiv) {
+          errorDiv.classList.remove('hidden');
+        }
       }
     }
 
@@ -1121,7 +1263,10 @@ function serveDriverStats(pin) {
         const dateStr = date.toISOString().split('T')[0];
         labels.push(date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
         
-        const dayData = timelineData.find(d => d.delivery_date && d.delivery_date.startsWith(dateStr));
+        // Safe date comparison with null check and type conversion
+        const dayData = timelineData.find(d => 
+          d.delivery_date && String(d.delivery_date).startsWith(dateStr)
+        );
         data.push(dayData ? parseInt(dayData.deliveries_count) : 0);
       }
       
@@ -1190,7 +1335,7 @@ function serveDriverStats(pin) {
 
     // Init
     refreshData();
-    setInterval(refreshData, 60000); // Poll every 60s
+    autoRefreshInterval = setInterval(refreshData, 60000); // Poll every 60s
   </script>
 </body>
 </html>`;
