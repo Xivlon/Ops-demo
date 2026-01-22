@@ -983,7 +983,7 @@ function serveDriverStats(pin) {
 
     async function loadDriverStats() {
       try {
-        const res = await fetch('/api/driver-stats', {
+        const res = await fetch(\`/api/driver-stats?pin=\${pin}\`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
