@@ -896,20 +896,20 @@ async function refreshData() {
 
 async function loadStats() {
     try {
-      const res = await fetch(`/api/neon-query?pin=test123`, {
+      const res = await fetch(\`/api/neon-query?pin=test123\`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
-                query: `SELECT 
-                    COUNT(*) FILTER (WHERE status = 'PENDING') as pending, 
-                    COUNT(*) FILTER (WHERE status = 'ASSIGNED') as assigned, 
-                    COUNT(*) FILTER (WHERE status = 'PICKED_UP') as picked_up, 
-                    COUNT(*) FILTER (WHERE status = 'DELIVERED') as delivered, 
-                    COALESCE(SUM(price_cents), 0) / 100.0 as total_revenue,
-                    (SELECT COUNT(*) FROM driver_profiles WHERE is_online = true AND user_type = 'driver') as online_drivers,
-                    (SELECT COUNT(*) FROM driver_profiles WHERE user_type = 'driver') as total_drivers 
-                FROM shipments 
-                WHERE created_at > NOW() - INTERVAL '30 days'`
+                query: "SELECT " +
+                    "COUNT(*) FILTER (WHERE status = 'PENDING') as pending, " +
+                    "COUNT(*) FILTER (WHERE status = 'ASSIGNED') as assigned, " +
+                    "COUNT(*) FILTER (WHERE status = 'PICKED_UP') as picked_up, " +
+                    "COUNT(*) FILTER (WHERE status = 'DELIVERED') as delivered, " +
+                    "COALESCE(SUM(price_cents), 0) / 100.0 as total_revenue, " +
+                    "(SELECT COUNT(*) FROM driver_profiles WHERE is_online = true AND user_type = 'driver') as online_drivers, " +
+                    "(SELECT COUNT(*) FROM driver_profiles WHERE user_type = 'driver') as total_drivers " +
+                "FROM shipments " +
+                "WHERE created_at > NOW() - INTERVAL '30 days'"
             })
         });
 
@@ -917,12 +917,12 @@ async function loadStats() {
         
         const makeCard = (label, val, color, clickable = false) => {
             const cursor = clickable ? 'cursor-pointer' : '';
-            const onclick = clickable ? `onclick="window.location.href='/drivers?pin=${pin}'"` : '';
-            return `<div ${onclick} class="bg-slate-800 rounded-xl p-4 border border-slate-700 relative overflow-hidden group hover:border-${color}-500/50 transition-colors ${cursor}">
-                   <div class="absolute top-0 right-0 w-16 h-16 bg-${color}-500/10 rounded-bl-full -mr-2 -mt-2 transition-transform group-hover:scale-110"></div>
-                   <div class="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">${label}</div>
-                   <div class="text-2xl font-black text-${color}-400 relative z-10">${val || 0}</div>
-                   </div>`;
+            const onclick = clickable ? 'onclick="window.location.href=\\'/drivers?pin=${pin}\\'"' : '';
+            return \`<div \${onclick} class="bg-slate-800 rounded-xl p-4 border border-slate-700 relative overflow-hidden group hover:border-\${color}-500/50 transition-colors \${cursor}">
+                   <div class="absolute top-0 right-0 w-16 h-16 bg-\${color}-500/10 rounded-bl-full -mr-2 -mt-2 transition-transform group-hover:scale-110"></div>
+                   <div class="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">\${label}</div>
+                   <div class="text-2xl font-black text-\${color}-400 relative z-10">\${val || 0}</div>
+                   </div>\`;
         };
 
         const grid = document.getElementById('stats-grid');
@@ -946,7 +946,7 @@ async function loadStats() {
 
 async function loadDrivers() {
     try {
-        const res = await fetch(`/api/neon-query?pin=${pin}`, {
+        const res = await fetch(\`/api/neon-query?pin=\${pin}\`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
@@ -964,7 +964,7 @@ async function loadDrivers() {
 async function loadShipments() {
     const tbody = document.getElementById('table-body');
     try {
-        const res = await fetch(`/api/neon-query?pin=${pin}`, {
+        const res = await fetch(\`/api/neon-query?pin=\${pin}\`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
@@ -993,26 +993,26 @@ function renderTable() {
     allShipments.forEach(s => {
         const row = document.createElement('tr');
         row.className = 'border-b border-slate-800 hover:bg-slate-800/30';
-        row.innerHTML = `
+        row.innerHTML = \`
             <td class="px-6 py-4 whitespace-nowrap">
-                <div class="text-sm font-medium text-slate-200">${s.id}</div>
+                <div class="text-sm font-medium text-slate-200">\${s.id}</div>
             </td>
             <td class="px-6 py-4 whitespace-nowrap">
-                <div class="text-sm text-slate-300">${new Date(s.created_at).toLocaleDateString()}</div>
+                <div class="text-sm text-slate-300">\${new Date(s.created_at).toLocaleDateString()}</div>
             </td>
             <td class="px-6 py-4 whitespace-nowrap">
-                <span class="px-2 py-1 text-xs font-medium rounded-full ${getStatusClass(s.status)}">${s.status}</span>
+                <span class="px-2 py-1 text-xs font-medium rounded-full \${getStatusClass(s.status)}">\${s.status}</span>
             </td>
             <td class="px-6 py-4 whitespace-nowrap">
-                <div class="text-sm text-slate-300">${s.driver_name || 'Unassigned'}</div>
+                <div class="text-sm text-slate-300">\${s.driver_name || 'Unassigned'}</div>
             </td>
             <td class="px-6 py-4 whitespace-nowrap">
-                <div class="text-sm text-slate-300">${s.origin_airport} → ${s.destination_airport}</div>
+                <div class="text-sm text-slate-300">\${s.origin_airport} → \${s.destination_airport}</div>
             </td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-300">
-                $${(s.price_cents / 100).toFixed(2)}
+                $\${(s.price_cents / 100).toFixed(2)}
             </td>
-        `;
+        \`;
         tbody.appendChild(row);
     });
 }
@@ -1186,7 +1186,7 @@ async function assignDriver(shipmentId) {
 
     try {
         select.disabled = true;
-        const res = await fetch(`/api/neon-query?pin=${pin}`, {
+        const res = await fetch(\`/api/neon-query?pin=\${pin}\`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
