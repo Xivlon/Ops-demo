@@ -231,15 +231,12 @@ async function handleRefreshDriverStats(env) {
 
     const sql = neon(connectionString);
 
-    // Use a transaction to prevent race condition where table is empty during refresh
-    // Step 1: Begin transaction, clear existing stats, and insert fresh stats atomically
-    await sql`BEGIN`;
-    
-    try {
-      await sql`TRUNCATE TABLE driver_stats`;
-
-      // Step 2: Compute and insert fresh stats from driver_profiles and shipments
-      await sql`
+    // Use sql.transaction() for atomic operations - the neon() function's individual queries
+    // are stateless HTTP requests that don't support BEGIN/COMMIT/ROLLBACK separately.
+    // sql.transaction() executes multiple queries atomically in a single transaction.
+    await sql.transaction([
+      sql`TRUNCATE TABLE driver_stats`,
+      sql`
         INSERT INTO driver_stats (
           id, first_name, last_name, email, is_online, profile_photo_url, driver_joined,
           total_assigned, pending_count, assigned_count, in_transit_count, total_completed,
@@ -306,15 +303,10 @@ async function handleRefreshDriverStats(env) {
         LEFT JOIN shipments s ON s.driver_id = dp.id
         WHERE dp.user_type = 'driver'
         GROUP BY dp.id, dp.first_name, dp.last_name, dp.email, dp.is_online, dp.profile_photo_url, dp.created_at
-      `;
+      `
+    ]);
 
-      await sql`COMMIT`;
-    } catch (txError) {
-      await sql`ROLLBACK`;
-      throw txError;
-    }
-
-    // Step 3: Get the count of updated drivers
+    // Get the count of updated drivers
     const countResult = await sql`SELECT COUNT(*) as count FROM driver_stats`;
     const driverCount = countResult[0]?.count || 0;
 
