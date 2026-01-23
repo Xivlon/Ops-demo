@@ -315,13 +315,13 @@ async function handleRefreshDriverStats(env) {
         0 as failed_count,
         COUNT(*) FILTER (WHERE s.status = 'CANCELLED') as total_failed,
         
-        -- Weekly stats
-        COUNT(*) FILTER (WHERE s.status = 'DELIVERED' AND s.delivered_at > NOW() - INTERVAL '7 days') as week_completed,
+        -- Weekly stats (use COALESCE to fall back to updated_at if delivered_at is NULL)
+        COUNT(*) FILTER (WHERE s.status = 'DELIVERED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days') as week_completed,
         COUNT(*) FILTER (WHERE s.status = 'CANCELLED' AND s.updated_at > NOW() - INTERVAL '7 days') as week_failed,
         
-        -- Revenue calculations
+        -- Revenue calculations (use COALESCE to fall back to updated_at if delivered_at is NULL)
         COALESCE(SUM(s.price_cents) FILTER (WHERE s.status = 'DELIVERED'), 0) / 100.0 as total_revenue,
-        COALESCE(SUM(s.price_cents) FILTER (WHERE s.status = 'DELIVERED' AND s.delivered_at > NOW() - INTERVAL '7 days'), 0) / 100.0 as week_revenue,
+        COALESCE(SUM(s.price_cents) FILTER (WHERE s.status = 'DELIVERED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days'), 0) / 100.0 as week_revenue,
         
         -- Activity tracking (use COALESCE to handle NULL from LEFT JOIN for drivers with no shipments)
         MAX(COALESCE(GREATEST(s.delivered_at, dp.account_updated_at), dp.account_updated_at)) as last_active,
@@ -1567,13 +1567,13 @@ function serveDriverStats(pin) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
             query: \`SELECT 
-              DATE(delivered_at) as delivery_date,
+              DATE(COALESCE(delivered_at, updated_at)) as delivery_date,
               COUNT(*) as deliveries_count
             FROM shipments
             WHERE driver_id = \$1 
               AND status = 'DELIVERED'
-              AND delivered_at > NOW() - INTERVAL '30 days'
-            GROUP BY DATE(delivered_at)
+              AND COALESCE(delivered_at, updated_at) > NOW() - INTERVAL '30 days'
+            GROUP BY DATE(COALESCE(delivered_at, updated_at))
             ORDER BY delivery_date ASC\`,
             params: [driverId]
           })
