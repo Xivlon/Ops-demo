@@ -231,6 +231,37 @@ async function handleRefreshDriverStats(env) {
 
     const sql = neon(connectionString);
 
+    // Create the driver_stats table if it doesn't exist
+    await sql`
+      CREATE TABLE IF NOT EXISTS driver_stats (
+        id UUID PRIMARY KEY,
+        first_name VARCHAR(255),
+        last_name VARCHAR(255),
+        email VARCHAR(255),
+        is_online BOOLEAN,
+        profile_photo_url TEXT,
+        driver_joined TIMESTAMP,
+        total_assigned INTEGER DEFAULT 0,
+        pending_count INTEGER DEFAULT 0,
+        assigned_count INTEGER DEFAULT 0,
+        in_transit_count INTEGER DEFAULT 0,
+        total_completed INTEGER DEFAULT 0,
+        cancelled_count INTEGER DEFAULT 0,
+        failed_count INTEGER DEFAULT 0,
+        total_failed INTEGER DEFAULT 0,
+        week_completed INTEGER DEFAULT 0,
+        week_failed INTEGER DEFAULT 0,
+        total_revenue DECIMAL(10, 2) DEFAULT 0,
+        week_revenue DECIMAL(10, 2) DEFAULT 0,
+        last_active TIMESTAMP,
+        success_rate DECIMAL(5, 2),
+        cancel_rate DECIMAL(5, 2),
+        avg_rating DECIMAL(3, 2) DEFAULT 0,
+        rating_count INTEGER DEFAULT 0,
+        stats_updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `;
+
     // Execute TRUNCATE and INSERT sequentially (no explicit transaction needed)
     // The Neon serverless driver executes each sql call as a separate stateless HTTP request
     await sql`TRUNCATE TABLE driver_stats`;
@@ -1118,15 +1149,15 @@ function serveDriverStats(pin) {
       autoRefreshEnabled = !autoRefreshEnabled;
       const btn = document.getElementById('autoRefreshToggle');
       const text = document.getElementById('autoRefreshText');
-      const icon = btn.querySelector('i');
+      const icon = btn?.querySelector('i');
       
       if (autoRefreshEnabled) {
         text.innerText = 'Pause Auto-refresh';
-        icon.setAttribute('data-lucide', 'pause');
+        if (icon) icon.setAttribute('data-lucide', 'pause');
         autoRefreshInterval = setInterval(refreshData, 60000);
       } else {
         text.innerText = 'Resume Auto-refresh';
-        icon.setAttribute('data-lucide', 'play');
+        if (icon) icon.setAttribute('data-lucide', 'play');
         if (autoRefreshInterval) {
           clearInterval(autoRefreshInterval);
           autoRefreshInterval = null;
