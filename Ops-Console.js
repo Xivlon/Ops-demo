@@ -413,6 +413,7 @@ async function handleRefreshDriverStats(env) {
           stats_updated_at TIMESTAMP DEFAULT NOW()
         )
       `;
+      console.log('Driver stats table verified/created successfully');
     } catch (tableError) {
       console.error('Error creating driver_stats table:', tableError);
       return new Response(
@@ -627,12 +628,518 @@ async function testConnection(env) {
   }
 }
 
+// Function to serve the dashboard HTML
 function serveDashboard(pin) {
-  // Keep your existing serveDashboard function from the original code
-  // It remains unchanged
-  return new Response("Dashboard HTML here", { headers: { "Content-Type": "text/html" } });
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LuggageLink Ops</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            slate: {
+              50: '#f8fafc',
+              100: '#f1f5f9',
+              200: '#e2e8f0',
+              300: '#cbd5e1',
+              400: '#94a3b8',
+              500: '#64748b',
+              600: '#475569',
+              700: '#334155',
+              800: '#1e293b',
+              900: '#0f172a',
+              950: '#020617',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    body { font-family: sans-serif; }
+    
+    th { cursor: pointer; user-select: none; transition: color 0.2s; }
+    th:hover { color: #4ade80; }
+    
+    .sort-indicator { display: inline-block; margin-left: 4px; width: 10px; }
+
+    .address-truncate { 
+        max-width: 160px; 
+        white-space: nowrap; 
+        overflow: hidden; 
+        text-overflow: ellipsis; 
+        display: inline-block;
+        vertical-align: middle;
+    }
+
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen font-sans selection:bg-green-500 selection:text-white">
+  
+  <nav class="bg-slate-800 border-b border-slate-700 px-6 py-4 sticky top-0 z-50 shadow-md">
+    <div class="max-w-7xl mx-auto flex justify-between items-center">
+        <div class="flex items-center gap-3">
+            <div class="bg-purple-600 text-white p-2.5 rounded-lg shadow-inner shadow-green-400/20">
+                <i data-lucide="tower-control" class="w-7 h-7"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold tracking-tight">LuggageLink Ops</h1>
+                <div class="flex items-center gap-2">
+                    <span id="status-indicator" class="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></span>
+                    <p id="status-text" class="text-xs text-slate-400 font-medium">Connecting...</p>
+                </div>
+            </div>
+        </div>
+        <div class="flex items-center gap-3">
+          <button onclick="window.location.href='/drivers?pin=${pin}'" class="group bg-orange-700 hover:bg-orange-600 border border-orange-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2">
+            <i data-lucide="users" class="w-4 h-4"></i>
+            Driver Stats
+          </button>
+          <button onclick="refreshData()" class="group bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-200 px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2">
+            <i data-lucide="refresh-cw" class="w-4 h-4 group-hover:rotate-180 transition-transform duration-500"></i>
+            Refresh Data
+          </button>
+        </div>
+    </div>
+  </nav>
+
+  <div class="max-w-7xl mx-auto p-6 space-y-6">
+    
+    <div id="toast-container" class="fixed top-24 right-6 z-50 pointer-events-none"></div>
+
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4" id="stats-grid">
+        <div class="bg-slate-800 h-24 rounded-xl animate-pulse"></div>
+        <div class="bg-slate-800 h-24 rounded-xl animate-pulse"></div>
+        <div class="bg-slate-800 h-24 rounded-xl animate-pulse"></div>
+        <div class="bg-slate-800 h-24 rounded-xl animate-pulse"></div>
+        <div class="bg-slate-800 h-24 rounded-xl animate-pulse"></div>
+        <div class="bg-slate-800 h-24 rounded-xl animate-pulse"></div>
+    </div>
+
+    <div class="bg-slate-800 rounded-xl shadow-lg border border-slate-700 overflow-hidden flex flex-col h-[70vh]">
+      
+      <div class="px-6 py-4 border-b border-slate-700 bg-slate-800/50 flex justify-between items-center backdrop-blur">
+         <div class="flex items-center gap-4">
+             <h2 class="font-bold text-slate-200 text-lg flex items-center gap-2">
+                <i data-lucide="package" class="w-5 h-5 text-green-500"></i> Active Shipments
+             </h2>
+             <span id="count-badge" class="bg-slate-700 text-slate-300 px-2.5 py-0.5 rounded-full text-xs font-bold border border-slate-600">0</span>
+         </div>
+         
+         <div class="flex items-center gap-3">
+             <select id="statusFilter" onchange="renderTable()" class="bg-slate-900 border border-slate-600 text-slate-300 text-xs rounded-lg px-3 py-2 focus:border-green-500 outline-none cursor-pointer hover:bg-slate-900/80">
+                <option value="">All Statuses</option>
+                <option value="PENDING">Pending</option>
+                <option value="ASSIGNED">Assigned</option>
+                <option value="PICKED_UP">In-Transit</option>
+                <option value="DELIVERED">Delivered</option>
+             </select>
+         </div>
+      </div>
+
+      <div class="overflow-auto flex-1 custom-scrollbar">
+        <table class="min-w-full divide-y divide-slate-700">
+          <thead class="bg-slate-900/80 sticky top-0 z-10 backdrop-blur-sm">
+            <tr>
+              <th onclick="sortTable(0)" class="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                ID <span class="sort-indicator text-green-400" data-sort-key="0"></span>
+              </th>
+              <th onclick="sortTable(1)" class="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                Created <span class="sort-indicator text-green-400" data-sort-key="1">▼</span>
+              </th>
+              <th onclick="sortTable(2)" class="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                Status <span class="sort-indicator text-green-400" data-sort-key="2"></span>
+              </th>
+              <th onclick="sortTable(3)" class="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                Driver <span class="sort-indicator text-green-400" data-sort-key="3"></span>
+              </th>
+              <th onclick="sortTable(4)" class="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                Route <span class="sort-indicator text-green-400" data-sort-key="4"></span>
+              </th>
+              <th class="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                Customer Info
+              </th>
+            </tr>
+          </thead>
+          <tbody id="table-body" class="bg-slate-800 divide-y divide-slate-700 text-sm">
+            <tr>
+                <td colspan="6" class="px-6 py-12 text-center text-slate-500">
+                    <div class="flex flex-col items-center justify-center gap-2">
+                        <i data-lucide="loader-2" class="animate-spin w-8 h-8 text-green-500"></i>
+                        <span>Loading live data...</span>
+                    </div>
+                </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      
+      <div class="bg-slate-900 px-6 py-2 border-t border-slate-700 text-[10px] text-slate-500 flex justify-between items-center">
+        <span>SECURE OPS ENVIRONMENT</span>
+        <span id="last-updated">Updating...</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    lucide.createIcons();
+    
+    let allShipments = [];
+    let allDrivers = [];
+    let sortOrder = { 1: 'desc' };
+    let currentSortedCol = 1;
+
+    async function refreshData() {
+        await loadDrivers();
+        await Promise.all([loadStats(), loadShipments()]);
+    }
+
+    async function loadStats() {
+        try {
+            const res = await fetch(\`/api/neon-query?pin=${pin}\`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    query: \`SELECT 
+                      COUNT(*) FILTER (WHERE status = 'PENDING') as pending,
+                      COUNT(*) FILTER (WHERE status = 'ASSIGNED') as assigned,
+                      COUNT(*) FILTER (WHERE status = 'PICKED_UP') as picked_up,
+                      COUNT(*) FILTER (WHERE status = 'DELIVERED') as delivered,
+                      COALESCE(SUM(price_cents), 0) / 100.0 as total_revenue,
+                      (SELECT COUNT(*) FROM driver_profiles WHERE is_online = true AND user_type = 'driver') as online_drivers,
+                      (SELECT COUNT(*) FROM driver_profiles WHERE user_type = 'driver') as total_drivers
+                    FROM shipments
+                    WHERE created_at > NOW() - INTERVAL '30 days'\`
+                })
+            });
+            
+            const data = await res.json();
+            
+            const makeCard = (label, val, color, clickable = false) => {
+                const cursor = clickable ? 'cursor-pointer' : '';
+                const onclick = clickable ? \`onclick="window.location.href='/drivers?pin=${pin}'" \` : '';
+                return '<div ' + onclick + 'class="bg-slate-800 rounded-xl p-4 border border-slate-700 relative overflow-hidden group hover:border-' + color + '-500/50 transition-colors ' + cursor + '">' +
+                       '<div class="absolute top-0 right-0 w-16 h-16 bg-' + color + '-500/10 rounded-bl-full -mr-2 -mt-2 transition-transform group-hover:scale-110"></div>' +
+                       '<div class="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">' + label + '</div>' +
+                       '<div class="text-2xl font-black text-' + color + '-400 relative z-10">' + (val || 0) + '</div>' +
+                       '</div>';
+            };
+
+            const grid = document.getElementById('stats-grid');
+            grid.innerHTML = 
+                makeCard('Pending', data.rows?.[0]?.pending, 'yellow') +
+                makeCard('Assigned', data.rows?.[0]?.assigned, 'blue') +
+                makeCard('In Transit', data.rows?.[0]?.picked_up, 'purple') +
+                makeCard('Completed', data.rows?.[0]?.delivered, 'green') +
+                makeCard('Revenue', '$' + parseFloat(data.rows?.[0]?.total_revenue || 0).toFixed(2), 'emerald') +
+                makeCard('Active Drivers', (data.rows?.[0]?.online_drivers || 0) + '/' + (data.rows?.[0]?.total_drivers || 0), 'orange', true);
+
+            document.getElementById('status-indicator').className = "w-2 h-2 rounded-full bg-green-500";
+            document.getElementById('status-text').innerText = "Connected";
+
+        } catch (e) { 
+            console.warn("Stats error", e);
+            document.getElementById('status-indicator').className = "w-2 h-2 rounded-full bg-red-500";
+            document.getElementById('status-text').innerText = "Connection Error";
+            showToast("Failed to load statistics", "red");
+        }
+    }
+
+    async function loadDrivers() {
+        try {
+            const res = await fetch(\`/api/neon-query?pin=${pin}\`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    query: \`SELECT 
+                      id,
+                      email,
+                      CONCAT(first_name, ' ', last_name) as name,
+                      is_online
+                    FROM driver_profiles
+                    WHERE user_type = 'driver'
+                    ORDER BY is_online DESC, first_name ASC\`
+                })
+            });
+            
+            const data = await res.json();
+            allDrivers = data.rows || [];
+        } catch (e) { 
+            console.error("Driver load failed", e);
+            showToast("Failed to load drivers", "red");
+        }
+    }
+
+    async function loadShipments() {
+        const tbody = document.getElementById('table-body');
+        try {
+            const res = await fetch(\`/api/neon-query?pin=${pin}\`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    query: \`SELECT 
+                      s.id,
+                      s.created_at,
+                      s.status,
+                      s.driver_id,
+                      s.origin_airport,
+                      s.destination_airport,
+                      s.pickup_address,
+                      s.dropoff_address,
+                      s.pickup_photo_url,
+                      s.delivery_photo_url,
+                      s.price_cents,
+                      s.customer_name,
+                      s.customer_email,
+                      s.customer_phone,
+                      s.luggage_description,
+                      s.special_instructions,
+                      CONCAT(dp.first_name, ' ', dp.last_name) as driver_name
+                    FROM shipments s
+                    LEFT JOIN driver_profiles dp ON s.driver_id = dp.id
+                    WHERE s.created_at > NOW() - INTERVAL '30 days'
+                    ORDER BY s.created_at DESC
+                    LIMIT 100\`
+                })
+            });
+            
+            const data = await res.json();
+            allShipments = data.rows || [];
+            
+            document.getElementById('count-badge').innerText = allShipments.length;
+            document.getElementById('last-updated').innerText = "Synced: " + new Date().toLocaleTimeString();
+
+            renderTable();
+
+        } catch (e) { 
+            console.error("Shipment load failed", e); 
+            tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-12 text-center text-red-400">Connection Error: ' + e.message + '</td></tr>';
+            showToast("Failed to load shipments", "red");
+        }
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function fmtLoc(s, type) {
+        const code = type === 'pickup' ? s.origin_airport : s.destination_airport;
+        const addr = type === 'pickup' ? s.pickup_address : s.dropoff_address;
+
+        if (code && code.length >= 3) {
+            return '<span class="font-black text-white bg-slate-700 px-1.5 rounded text-[10px] tracking-wide" title="' + (addr || '') + '">' + code + '</span>';
+        }
+        
+        if (addr && addr.length > 2) {
+            return '<span class="address-truncate text-slate-400" title="' + addr + '">' + addr + '</span>';
+        }
+
+        return '<span class="text-slate-600 text-[10px] italic">N/A</span>';
+    }
+
+    function renderTable() {
+        const tbody = document.getElementById('table-body');
+        const filter = document.getElementById('statusFilter').value;
+        
+        let list = filter ? allShipments.filter(s => s.status === filter) : [...allShipments];
+
+        list.sort((a, b) => {
+            const colKey = currentSortedCol;
+            let valA, valB;
+
+            switch(colKey) {
+                case 0: valA = a.id; valB = b.id; break;
+                case 1: valA = a.created_at; valB = b.created_at; break;
+                case 2: valA = a.status; valB = b.status; break;
+                case 3: valA = a.driver_name || ''; valB = b.driver_name || ''; break;
+                case 4: valA = a.origin_airport || ''; valB = b.origin_airport || ''; break;
+                default: return 0;
+            }
+
+            if (valA < valB) return sortOrder[colKey] === 'asc' ? -1 : 1;
+            if (valA > valB) return sortOrder[colKey] === 'asc' ? 1 : -1;
+            return 0;
+        });
+
+        if (list.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-12 text-center text-slate-500 italic">No shipments found.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = list.map(s => {
+            const stMap = {
+                'PENDING': 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
+                'ASSIGNED': 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+                'PICKED_UP': 'bg-purple-500/10 text-purple-400 border-purple-500/20',
+                'DELIVERED': 'bg-green-500/10 text-green-400 border-green-500/20'
+            };
+            const badgeClass = stMap[s.status] || 'bg-slate-700 text-slate-400';
+
+            let driverHtml = '';
+            const dId = s.driver_id;
+
+            if (s.status === 'PENDING') {
+                const options = allDrivers
+                    .filter(d => d.is_online)
+                    .map(d => '<option value="' + d.id + '">' + (d.name || d.email) + '</option>')
+                    .join('');
+                
+                if(options) {
+                    driverHtml = 
+                    '<div class="flex items-center gap-2" onclick="event.stopPropagation()">' +
+                        '<select id="assign-' + s.id + '" class="bg-slate-900 border border-slate-600 text-xs rounded px-2 py-1 text-slate-300 w-28 focus:border-green-500 outline-none">' +
+                            '<option value="">Assign...</option>' +
+                            options +
+                        '</select>' +
+                        '<button onclick="assignDriver(\\'' + s.id + '\\')" class="bg-green-600 hover:bg-green-500 text-white p-1 rounded transition-colors" title="Confirm Assignment">' +
+                            '<i data-lucide="check" class="w-3 h-3"></i>' +
+                        '</button>' +
+                    '</div>';
+                } else {
+                    driverHtml = '<span class="text-red-400 text-xs italic opacity-75">No Drivers Online</span>';
+                }
+            } else if (dId) {
+                const dName = s.driver_name || 'ID: ' + (dId?.slice(0,5) || 'N/A');
+                driverHtml = 
+                    '<div class="flex items-center gap-1.5 text-indigo-400">' +
+                        '<i data-lucide="user" class="w-3 h-3"></i>' +
+                        '<span class="font-mono text-xs font-bold">' + dName + '</span>' +
+                    '</div>';
+            } else {
+                driverHtml = '<span class="text-slate-600 text-xs italic">Unassigned</span>';
+            }
+
+            let customerInfoParts = [];
+            const custName = escapeHtml(s.customer_name) || 'Customer';
+            const custEmail = escapeHtml(s.customer_email);
+            const custPhone = escapeHtml(s.customer_phone);
+            
+            customerInfoParts.push('<div class="text-sm font-medium text-slate-300">' + custName + '</div>');
+            if (custEmail) customerInfoParts.push('<div class="text-xs text-slate-400">' + custEmail + '</div>');
+            if (custPhone) customerInfoParts.push('<div class="text-xs text-slate-400">' + custPhone + '</div>');
+            
+            const customerInfoHtml = '<div class="flex flex-col gap-0.5">' + customerInfoParts.join('') + '</div>';
+
+            const d = new Date(s.created_at);
+            const dateStr = d.toLocaleDateString([], {month:'short', day:'numeric'});
+            const timeStr = d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+
+        return '<tr class="hover:bg-slate-800 transition-colors border-b border-slate-700/50 group">' +
+                 '<td class="px-6 py-4 whitespace-nowrap">' +
+                 '<div class="font-mono text-xs text-slate-500 group-hover:text-slate-300 transition-colors">#' + (s.id?.slice(0,8) || 'N/A') + '</div>' +
+                 '</td>' +
+                 '<td class="px-6 py-4 whitespace-nowrap">' +
+                 '<div class="text-sm font-medium text-slate-300">' + dateStr + '</div>' +
+                 '<div class="text-[10px] text-slate-500">' + timeStr + '</div>' +
+                 '</td>' +
+                 '<td class="px-6 py-4 whitespace-nowrap">' +
+                 '<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border ' + badgeClass + '">' +
+                 s.status +
+                 '</span>' +
+                 '</td>' +
+                 '<td class="px-6 py-4 whitespace-nowrap">' +
+                 driverHtml +
+                 '</td>' +
+                 '<td class="px-6 py-4 whitespace-nowrap text-xs text-slate-300">' +
+                 '<div class="flex items-center gap-2">' +
+                 fmtLoc(s, 'pickup') +
+                 '<i data-lucide="arrow-right" class="w-3 h-3 text-slate-600"></i>' +
+                 fmtLoc(s, 'dropoff') +
+                 '</div>' +
+                 '</td>' +
+                 '<td class="px-6 py-4 whitespace-nowrap">' +
+                 customerInfoHtml +
+                 '</td>' +
+                 '</tr>';
+            }).join('');
+        
+        lucide.createIcons();
+    }
+
+    function sortTable(colIndex) {
+        const isAsc = sortOrder[colIndex] === 'asc';
+        sortOrder[colIndex] = isAsc ? 'desc' : 'asc';
+        currentSortedCol = colIndex;
+
+        document.querySelectorAll('.sort-indicator').forEach(el => el.innerHTML = '');
+        const headerIcon = document.querySelector('[data-sort-key="' + colIndex + '"]');
+        if(headerIcon) headerIcon.innerHTML = isAsc ? '▲' : '▼'; 
+
+        renderTable();
+    }
+
+    async function assignDriver(shipmentId) {
+        const select = document.getElementById('assign-' + shipmentId);
+        const driverId = select.value;
+        if(!driverId) return;
+
+        try {
+            select.disabled = true;
+            const res = await fetch(\`/api/neon-query?pin=${pin}\`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    query: \`UPDATE shipments 
+                            SET status = 'ASSIGNED', driver_id = \$1, claimed_at = NOW() 
+                            WHERE id = \$2 
+                            RETURNING id\`,
+                    params: [driverId, shipmentId]
+                })
+            });
+
+            if (res.ok) {
+                showToast("Driver assigned successfully", "green");
+                await refreshData();
+            } else {
+                const err = await res.json();
+                showToast(err.error || "Failed to assign", "red");
+                select.disabled = false;
+            }
+        } catch (e) {
+            console.error(e);
+            showToast("Network Error", "red");
+            select.disabled = false;
+        }
+    }
+
+    function showToast(msg, color) {
+        const container = document.getElementById('toast-container');
+        const div = document.createElement('div');
+        const bg = color === 'green' ? 'bg-green-600' : 'bg-red-600';
+        div.className = bg + " text-white px-4 py-2 rounded shadow-lg mb-2 text-sm font-bold animate-bounce pointer-events-auto";
+        div.innerText = msg;
+        container.appendChild(div);
+        setTimeout(() => div.remove(), 3000);
+    }
+
+    refreshData();
+    setInterval(refreshData, 30000);
+  </script>
+</body>
+</html>`;
+
+  return new Response(html, { 
+    headers: { 
+      "Content-Type": "text/html",
+      "X-Content-Type-Options": "nosniff"
+    } 
+  });
 }
 
+// Function to serve the driver stats HTML with hybrid capabilities
 function serveDriverStats(pin) {
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -707,6 +1214,7 @@ function serveDriverStats(pin) {
 
     <div class="bg-slate-800 rounded-xl p-4 border border-slate-700 flex flex-wrap gap-4">
       <div class="flex items-center gap-2">
+        <i data-lucide="refresh-cw" class="w-4 h-4 text-slate-400"></i>
         <label class="text-sm font-semibold text-slate-400">Data Source:</label>
         <div class="flex bg-slate-900 rounded-lg border border-slate-600 overflow-hidden">
           <button id="btn-cached" onclick="setDataSource('cached')" class="px-3 py-2 text-sm font-semibold text-green-400 bg-slate-800">
@@ -719,210 +1227,3 @@ function serveDriverStats(pin) {
       </div>
       
       <button onclick="refreshData()" class="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-lg text-sm flex items-center gap-2">
-        <i data-lucide="refresh-cw" class="w-4 h-4"></i>
-        Refresh
-      </button>
-      
-      <button onclick="recalculateStats()" class="bg-purple-700 hover:bg-purple-600 px-4 py-2 rounded-lg text-sm flex items-center gap-2">
-        <i data-lucide="database" class="w-4 h-4"></i>
-        Update Cache
-      </button>
-    </div>
-
-    <div id="drivers-grid" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <div class="bg-slate-800 h-96 rounded-xl animate-pulse"></div>
-      <div class="bg-slate-800 h-96 rounded-xl animate-pulse"></div>
-    </div>
-    
-    <div class="text-center text-slate-500 text-sm">
-      <span id="last-updated">Loading...</span>
-      <span id="data-freshness" class="ml-4"></span>
-    </div>
-  </div>
-
-  <script>
-    lucide.createIcons();
-    
-    let allDrivers = [];
-    let currentDataSource = 'cached';
-    
-    function escapeHtml(text) {
-      if (!text) return '';
-      const div = document.createElement('div');
-      div.textContent = text;
-      return div.innerHTML;
-    }
-    
-    function setDataSource(source) {
-      currentDataSource = source;
-      updateDataSourceUI();
-      refreshData();
-    }
-    
-    function updateDataSourceUI() {
-      const btnCached = document.getElementById('btn-cached');
-      const btnLive = document.getElementById('btn-live');
-      const badge = document.getElementById('data-source-text');
-      
-      if (currentDataSource === 'cached') {
-        btnCached.className = 'px-3 py-2 text-sm font-semibold text-green-400 bg-slate-800';
-        btnLive.className = 'px-3 py-2 text-sm font-semibold text-slate-400';
-        badge.innerText = 'Cached';
-      } else {
-        btnCached.className = 'px-3 py-2 text-sm font-semibold text-slate-400';
-        btnLive.className = 'px-3 py-2 text-sm font-semibold text-emerald-400 bg-slate-800';
-        badge.innerText = 'Live';
-      }
-      
-      lucide.createIcons();
-    }
-
-    async function refreshData() {
-      try {
-        await loadDriverStats();
-        document.getElementById('last-updated').innerText = 'Last updated: ' + new Date().toLocaleTimeString();
-      } catch (error) {
-        console.error('Error:', error);
-        showToast('Failed to load data', 'red');
-      }
-    }
-    
-    async function recalculateStats() {
-      try {
-        showToast("Updating cache...", "blue");
-        
-        const res = await fetch(\`/api/refresh-driver-stats?pin=${pin}\`, {
-          method: 'POST'
-        });
-        
-        const data = await res.json();
-        
-        if (data.success) {
-          showToast(\`Cache updated: \${data.driversUpdated} drivers\`, "green");
-          currentDataSource = 'cached';
-          updateDataSourceUI();
-          await refreshData();
-        } else {
-          showToast("Failed to update cache", "red");
-        }
-      } catch (e) {
-        showToast("Failed to update cache", "red");
-      }
-    }
-
-    async function loadDriverStats() {
-      try {
-        let res;
-        
-        if (currentDataSource === 'live') {
-          res = await fetch(\`/api/live-driver-stats?pin=${pin}\`, {
-            method: 'POST'
-          });
-        } else {
-          res = await fetch(\`/api/driver-stats?pin=${pin}\`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              query: 'SELECT * FROM driver_stats ORDER BY total_completed DESC'
-            })
-          });
-        }
-        
-        const data = await res.json();
-        allDrivers = data.rows || [];
-        
-        document.getElementById('status-indicator').className = "w-2 h-2 rounded-full bg-green-500";
-        document.getElementById('status-text').innerText = \`Connected - \${allDrivers.length} drivers\`;
-        
-        renderDriverCards(allDrivers);
-        
-      } catch (e) { 
-        console.error("Error:", e);
-        document.getElementById('status-indicator').className = "w-2 h-2 rounded-full bg-red-500";
-        document.getElementById('status-text').innerText = "Error";
-        showToast("Failed to load data", "red");
-      }
-    }
-
-    function renderDriverCards(drivers) {
-      const grid = document.getElementById('drivers-grid');
-      
-      if (drivers.length === 0) {
-        grid.innerHTML = '<div class="col-span-full text-center text-slate-400 py-12">No drivers found</div>';
-        return;
-      }
-      
-      grid.innerHTML = drivers.map(driver => {
-        const name = \`\${driver.first_name || ''} \${driver.last_name || ''}\`.trim() || 'Unknown';
-        const initials = name.split(' ').map(n => n[0] || '').join('').toUpperCase().slice(0, 2) || '??';
-        
-        const successRate = driver.success_rate !== null ? parseFloat(driver.success_rate).toFixed(1) + '%' : 'N/A';
-        const dataSourceClass = currentDataSource === 'cached' ? 'data-source-cached' : 'data-source-live';
-        
-        return \`
-          <div class="driver-card bg-slate-800 rounded-xl p-6 border-2 performance-average \${dataSourceClass}">
-            <div class="flex items-start gap-4 mb-4">
-              <div class="w-16 h-16 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white font-bold text-xl">
-                \${initials}
-              </div>
-              <div class="flex-1">
-                <h3 class="text-lg font-bold">\${escapeHtml(name)}</h3>
-                <p class="text-xs text-slate-400">\${escapeHtml(driver.email || 'No email')}</p>
-                <span class="text-xs text-\${driver.is_online ? 'green' : 'slate'}-400">
-                  \${driver.is_online ? 'Online' : 'Offline'}
-                </span>
-              </div>
-            </div>
-            
-            <div class="grid grid-cols-2 gap-3">
-              <div class="bg-slate-900/50 rounded-lg p-3">
-                <div class="text-xs text-slate-400">Total Completed</div>
-                <div class="text-2xl font-bold">\${driver.total_completed || 0}</div>
-              </div>
-              
-              <div class="bg-slate-900/50 rounded-lg p-3">
-                <div class="text-xs text-slate-400">Success Rate</div>
-                <div class="text-2xl font-bold text-green-400">\${successRate}</div>
-              </div>
-              
-              <div class="bg-slate-900/50 rounded-lg p-3">
-                <div class="text-xs text-slate-400">Total Revenue</div>
-                <div class="text-xl font-bold text-emerald-400">$\${(parseFloat(driver.total_revenue) || 0).toFixed(2)}</div>
-              </div>
-              
-              <div class="bg-slate-900/50 rounded-lg p-3">
-                <div class="text-xs text-slate-400">Week Completed</div>
-                <div class="text-xl font-bold">\${driver.week_completed || 0}</div>
-              </div>
-            </div>
-          </div>
-        \`;
-      }).join('');
-      
-      lucide.createIcons();
-    }
-
-    function showToast(msg, color) {
-      const container = document.getElementById('toast-container');
-      const div = document.createElement('div');
-      const bg = color === 'green' ? 'bg-green-600' : color === 'blue' ? 'bg-blue-600' : 'bg-red-600';
-      div.className = bg + " text-white px-4 py-2 rounded shadow-lg mb-2 text-sm font-bold";
-      div.innerText = msg;
-      container.appendChild(div);
-      setTimeout(() => div.remove(), 3000);
-    }
-
-    // Init
-    updateDataSourceUI();
-    refreshData();
-  </script>
-</body>
-</html>`;
-
-  return new Response(html, { 
-    headers: { 
-      "Content-Type": "text/html",
-      "X-Content-Type-Options": "nosniff"
-    } 
-  });
-}
