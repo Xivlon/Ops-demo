@@ -885,12 +885,16 @@ function serveDriverStats(pin) {
         <select id="sortBy" onchange="applySortAndFilter()" class="bg-slate-900 border border-slate-600 text-slate-300 text-sm rounded-lg px-3 py-2 focus:border-green-500 outline-none cursor-pointer hover:bg-slate-900/80">
           <option value="deliveries-desc">Total Deliveries (High to Low)</option>
           <option value="deliveries-asc">Total Deliveries (Low to High)</option>
+          <option value="assigned-desc">Total Assigned (High to Low)</option>
+          <option value="assigned-asc">Total Assigned (Low to High)</option>
           <option value="revenue-desc">Revenue (High to Low)</option>
           <option value="revenue-asc">Revenue (Low to High)</option>
           <option value="rating-desc">Rating (High to Low)</option>
           <option value="rating-asc">Rating (Low to High)</option>
           <option value="success-desc">Success Rate (High to Low)</option>
           <option value="success-asc">Success Rate (Low to High)</option>
+          <option value="cancel-desc">Cancel Rate (High to Low)</option>
+          <option value="cancel-asc">Cancel Rate (Low to High)</option>
           <option value="active-recent">Last Active (Most Recent)</option>
           <option value="active-oldest">Last Active (Oldest)</option>
         </select>
@@ -946,6 +950,9 @@ function serveDriverStats(pin) {
     let charts = {};
     let autoRefreshInterval = null;
     let autoRefreshEnabled = true;
+    
+    // Performance thresholds
+    const CANCEL_RATE_WARNING_THRESHOLD = 10; // Show warning color if cancel rate exceeds this percentage
 
     // Escape HTML to prevent XSS
     function escapeHtml(text) {
@@ -994,14 +1001,32 @@ function serveDriverStats(pin) {
               dp.email,
               dp.is_online,
               dp.profile_photo_url,
+              dp.created_at as driver_joined,
               
+              -- Total shipments assigned to this driver
+              COUNT(s.id) as total_assigned,
+              
+              -- Shipment status breakdowns
+              COUNT(*) FILTER (WHERE s.status = 'PENDING') as pending_count,
+              COUNT(*) FILTER (WHERE s.status = 'ASSIGNED') as assigned_count,
+              COUNT(*) FILTER (WHERE s.status = 'PICKED_UP') as in_transit_count,
               COUNT(*) FILTER (WHERE s.status = 'DELIVERED') as total_completed,
+              COUNT(*) FILTER (WHERE s.status = 'CANCELLED') as cancelled_count,
+              COUNT(*) FILTER (WHERE s.status = 'FAILED') as failed_count,
               COUNT(*) FILTER (WHERE s.status IN ('CANCELLED', 'FAILED')) as total_failed,
-              COUNT(*) FILTER (WHERE s.status = 'DELIVERED' AND s.delivered_at > NOW() - INTERVAL '7 days') as week_completed,
               
+              -- Weekly stats
+              COUNT(*) FILTER (WHERE s.status = 'DELIVERED' AND s.delivered_at > NOW() - INTERVAL '7 days') as week_completed,
+              COUNT(*) FILTER (WHERE s.status IN ('CANCELLED', 'FAILED') AND s.updated_at > NOW() - INTERVAL '7 days') as week_failed,
+              
+              -- Revenue calculations
               COALESCE(SUM(s.price_cents) FILTER (WHERE s.status = 'DELIVERED'), 0) / 100.0 as total_revenue,
+              COALESCE(SUM(s.price_cents) FILTER (WHERE s.status = 'DELIVERED' AND s.delivered_at > NOW() - INTERVAL '7 days'), 0) / 100.0 as week_revenue,
+              
+              -- Activity tracking
               MAX(GREATEST(s.delivered_at, dp.updated_at)) as last_active,
               
+              -- Success rate calculation
               CASE 
                 WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED', 'FAILED')) > 0
                 THEN (COUNT(*) FILTER (WHERE s.status = 'DELIVERED')::float / 
@@ -1009,12 +1034,22 @@ function serveDriverStats(pin) {
                 ELSE NULL
               END as success_rate,
               
-              COALESCE(AVG(s.rating), 0) as avg_rating
+              -- Cancellation rate
+              CASE 
+                WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED', 'FAILED')) > 0
+                THEN (COUNT(*) FILTER (WHERE s.status = 'CANCELLED')::float / 
+                      COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED', 'FAILED'))::float * 100)
+                ELSE NULL
+              END as cancel_rate,
+              
+              -- Average rating
+              COALESCE(AVG(s.rating), 0) as avg_rating,
+              COUNT(s.rating) as rating_count
 
             FROM driver_profiles dp
             LEFT JOIN shipments s ON s.driver_id = dp.id
             WHERE dp.user_type = 'driver'
-            GROUP BY dp.id, dp.first_name, dp.last_name, dp.email, dp.is_online, dp.profile_photo_url
+            GROUP BY dp.id, dp.first_name, dp.last_name, dp.email, dp.is_online, dp.profile_photo_url, dp.created_at
             ORDER BY total_completed DESC\`
           })
         });
@@ -1059,12 +1094,16 @@ function serveDriverStats(pin) {
         switch(sortBy) {
           case 'deliveries-desc': return (b.total_completed || 0) - (a.total_completed || 0);
           case 'deliveries-asc': return (a.total_completed || 0) - (b.total_completed || 0);
+          case 'assigned-desc': return (b.total_assigned || 0) - (a.total_assigned || 0);
+          case 'assigned-asc': return (a.total_assigned || 0) - (b.total_assigned || 0);
           case 'revenue-desc': return (b.total_revenue || 0) - (a.total_revenue || 0);
           case 'revenue-asc': return (a.total_revenue || 0) - (b.total_revenue || 0);
           case 'rating-desc': return (b.avg_rating || 0) - (a.avg_rating || 0);
           case 'rating-asc': return (a.avg_rating || 0) - (b.avg_rating || 0);
           case 'success-desc': return (b.success_rate || 0) - (a.success_rate || 0);
           case 'success-asc': return (a.success_rate || 0) - (b.success_rate || 0);
+          case 'cancel-desc': return (b.cancel_rate || 0) - (a.cancel_rate || 0);
+          case 'cancel-asc': return (a.cancel_rate || 0) - (b.cancel_rate || 0);
           case 'active-recent': 
             return new Date(b.last_active || 0) - new Date(a.last_active || 0);
           case 'active-oldest': 
@@ -1105,7 +1144,13 @@ function serveDriverStats(pin) {
         const successRate = driver.success_rate !== null && driver.success_rate !== undefined 
           ? driver.success_rate 
           : null;
+        const cancelRate = driver.cancel_rate !== null && driver.cancel_rate !== undefined 
+          ? driver.cancel_rate 
+          : null;
         const weekCompleted = driver.week_completed || 0;
+        const weekFailed = driver.week_failed || 0;
+        const totalAssigned = driver.total_assigned || 0;
+        const inProgressCount = (driver.assigned_count || 0) + (driver.in_transit_count || 0);
         
         // Fixed performance classification with clear, non-overlapping conditions
         let performanceClass = 'performance-average';
@@ -1126,13 +1171,18 @@ function serveDriverStats(pin) {
         }
         
         const rating = driver.avg_rating || 0;
+        const ratingCount = driver.rating_count || 0;
         const stars = '★'.repeat(Math.round(rating)) + '☆'.repeat(5 - Math.round(rating));
         
         const lastActive = driver.last_active ? new Date(driver.last_active).toLocaleString() : 'Never';
+        const driverJoined = driver.driver_joined ? new Date(driver.driver_joined).toLocaleDateString() : 'Unknown';
         
-        // Display success rate with proper handling of NULL
+        // Display rates with proper handling of NULL
         const successRateDisplay = successRate !== null 
           ? successRate.toFixed(1) + '%' 
+          : 'N/A';
+        const cancelRateDisplay = cancelRate !== null 
+          ? cancelRate.toFixed(1) + '%' 
           : 'N/A';
         
         return \`
@@ -1152,36 +1202,77 @@ function serveDriverStats(pin) {
               </div>
             </div>
             
+            <!-- Current Activity Status -->
+            <div class="bg-slate-900/50 rounded-lg p-3 border border-slate-700 mb-4">
+              <div class="text-xs text-slate-400 mb-2">Current Activity</div>
+              <div class="flex gap-4 text-center">
+                <div class="flex-1">
+                  <div class="text-lg font-bold text-blue-400">\${driver.assigned_count || 0}</div>
+                  <div class="text-xs text-slate-500">Assigned</div>
+                </div>
+                <div class="flex-1">
+                  <div class="text-lg font-bold text-purple-400">\${driver.in_transit_count || 0}</div>
+                  <div class="text-xs text-slate-500">In Transit</div>
+                </div>
+                <div class="flex-1">
+                  <div class="text-lg font-bold text-yellow-400">\${driver.pending_count || 0}</div>
+                  <div class="text-xs text-slate-500">Pending</div>
+                </div>
+              </div>
+            </div>
+            
             <!-- Metrics Grid -->
             <div class="grid grid-cols-2 gap-3 mb-4">
               <div class="bg-slate-900/50 rounded-lg p-3 border border-slate-700">
-                <div class="text-xs text-slate-400 mb-1">Rating</div>
-                <div class="text-yellow-400 text-lg">\${stars}</div>
-                <div class="text-xs text-slate-500">\${rating.toFixed(1)}/5.0</div>
-              </div>
-              
-              <div class="bg-slate-900/50 rounded-lg p-3 border border-slate-700">
-                <div class="text-xs text-slate-400 mb-1">Total Deliveries</div>
-                <div class="text-2xl font-bold text-green-400">\${driver.total_completed || 0}</div>
-                <div class="text-xs text-slate-500">Past week: \${weekCompleted}</div>
+                <div class="text-xs text-slate-400 mb-1">Total Assigned</div>
+                <div class="text-2xl font-bold text-slate-300">\${totalAssigned}</div>
+                <div class="text-xs text-slate-500">\${driver.total_completed || 0} completed</div>
               </div>
               
               <div class="bg-slate-900/50 rounded-lg p-3 border border-slate-700">
                 <div class="text-xs text-slate-400 mb-1">Success Rate</div>
-                <div class="text-2xl font-bold text-blue-400">\${successRateDisplay}</div>
-                <div class="text-xs text-slate-500">\${driver.total_failed || 0} failed</div>
+                <div class="text-2xl font-bold text-green-400">\${successRateDisplay}</div>
+                <div class="text-xs text-slate-500">\${driver.total_failed || 0} failed/cancelled</div>
               </div>
               
               <div class="bg-slate-900/50 rounded-lg p-3 border border-slate-700">
-                <div class="text-xs text-slate-400 mb-1">Revenue</div>
-                <div class="text-2xl font-bold text-emerald-400">$\${(driver.total_revenue || 0).toFixed(2)}</div>
-                <div class="text-xs text-slate-500">All-time</div>
+                <div class="text-xs text-slate-400 mb-1">Cancel Rate</div>
+                <div class="text-2xl font-bold \${cancelRate !== null && cancelRate > CANCEL_RATE_WARNING_THRESHOLD ? 'text-red-400' : 'text-blue-400'}">\${cancelRateDisplay}</div>
+                <div class="text-xs text-slate-500">\${driver.cancelled_count || 0} cancelled</div>
+              </div>
+              
+              <div class="bg-slate-900/50 rounded-lg p-3 border border-slate-700">
+                <div class="text-xs text-slate-400 mb-1">Rating</div>
+                <div class="text-yellow-400 text-lg">\${stars}</div>
+                <div class="text-xs text-slate-500">\${rating.toFixed(1)}/5.0 (\${ratingCount} reviews)</div>
               </div>
             </div>
             
-            <div class="bg-slate-900/50 rounded-lg p-3 border border-slate-700 mb-4">
-              <div class="text-xs text-slate-400 mb-1">Last Active</div>
-              <div class="text-sm text-slate-300">\${lastActive}</div>
+            <!-- Revenue Stats -->
+            <div class="grid grid-cols-2 gap-3 mb-4">
+              <div class="bg-slate-900/50 rounded-lg p-3 border border-slate-700">
+                <div class="text-xs text-slate-400 mb-1">Total Revenue</div>
+                <div class="text-2xl font-bold text-emerald-400">$\${(driver.total_revenue || 0).toFixed(2)}</div>
+                <div class="text-xs text-slate-500">All-time</div>
+              </div>
+              
+              <div class="bg-slate-900/50 rounded-lg p-3 border border-slate-700">
+                <div class="text-xs text-slate-400 mb-1">Weekly Revenue</div>
+                <div class="text-2xl font-bold text-emerald-400">$\${(driver.week_revenue || 0).toFixed(2)}</div>
+                <div class="text-xs text-slate-500">\${weekCompleted} deliveries this week</div>
+              </div>
+            </div>
+            
+            <!-- Activity Info -->
+            <div class="grid grid-cols-2 gap-3 mb-4">
+              <div class="bg-slate-900/50 rounded-lg p-3 border border-slate-700">
+                <div class="text-xs text-slate-400 mb-1">Last Active</div>
+                <div class="text-sm text-slate-300">\${lastActive}</div>
+              </div>
+              <div class="bg-slate-900/50 rounded-lg p-3 border border-slate-700">
+                <div class="text-xs text-slate-400 mb-1">Driver Since</div>
+                <div class="text-sm text-slate-300">\${driverJoined}</div>
+              </div>
             </div>
             
             <!-- Performance Chart -->
