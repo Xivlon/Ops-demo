@@ -1409,22 +1409,21 @@ function serveDriverStats(pin) {
         const weekCompleted = parseInt(driver.week_completed, 10) || 0;
         const totalAssigned = parseInt(driver.total_assigned, 10) || 0;
         
-        // Fixed performance classification with clear, non-overlapping conditions
+        // Performance classification consistent with filter logic
+        // Needs attention: no data OR poor success rate OR low activity
+        // High performer: has data AND great success rate AND high activity
+        // Average: everything else
         let performanceClass = 'performance-average';
         let performanceBadge = '<span class="text-xs bg-yellow-500/20 text-yellow-400 px-2 py-1 rounded">Average</span>';
         
-        if (successRate === null) {
-          // No shipment data
-          performanceClass = 'performance-average';
-          performanceBadge = '<span class="text-xs bg-slate-500/20 text-slate-400 px-2 py-1 rounded">No Data</span>';
+        if (successRate === null || successRate < 70 || weekCompleted < 5) {
+          // Needs attention: no data, poor success rate, or low activity
+          performanceClass = 'performance-low';
+          performanceBadge = '<span class="text-xs bg-red-500/20 text-red-400 px-2 py-1 rounded">Needs Attention</span>';
         } else if (successRate >= 90 && weekCompleted >= 20) {
           // High performer: great success rate AND high activity
           performanceClass = 'performance-high';
           performanceBadge = '<span class="text-xs bg-green-500/20 text-green-400 px-2 py-1 rounded">High Performer</span>';
-        } else if (successRate < 70 || weekCompleted < 5) {
-          // Needs attention: poor success rate OR low activity
-          performanceClass = 'performance-low';
-          performanceBadge = '<span class="text-xs bg-red-500/20 text-red-400 px-2 py-1 rounded">Needs Attention</span>';
         }
         
         const rating = driver.avg_rating ? parseFloat(driver.avg_rating) : 0;
