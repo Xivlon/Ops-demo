@@ -894,7 +894,7 @@ function serveDashboard(pin) {
 
     async function loadStats() {
         try {
-            const res = await fetch('/api/neon-query?pin=${pin}', {
+            const res = await fetch(`/api/neon-query?pin=${pin}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
@@ -936,7 +936,7 @@ function serveDashboard(pin) {
 
     async function loadDrivers() {
         try {
-            const res = await fetch('/api/neon-query?pin=${pin}', {
+            const res = await fetch(`/api/neon-query?pin=${pin}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
@@ -955,7 +955,7 @@ function serveDashboard(pin) {
     async function loadShipments() {
         const tbody = document.getElementById('table-body');
         try {
-            const res = await fetch('/api/neon-query?pin=${pin}', {
+            const res = await fetch(`/api/neon-query?pin=${pin}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
@@ -1138,7 +1138,7 @@ function serveDashboard(pin) {
 
         try {
             select.disabled = true;
-            const res = await fetch('/api/neon-query?pin=${pin}', {
+            const res = await fetch(`/api/neon-query?pin=${pin}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
@@ -1420,7 +1420,7 @@ function serveDriverStats(pin) {
     async function recalculateStats() {
       try {
         showToast("Updating cache...", "blue");
-        const res = await fetch('/api/refresh-driver-stats?pin=${pin}', { method: 'POST' });
+        const res = await fetch(`/api/refresh-driver-stats?pin=${pin}`, { method: 'POST' });
         
         if (!res.ok) {
           throw new Error(`HTTP error ${res.status}`);
@@ -1447,9 +1447,9 @@ function serveDriverStats(pin) {
         let res;
         
         if (currentDataSource === 'live') {
-          res = await fetch('/api/live-driver-stats?pin=${pin}', { method: 'POST' });
+          res = await fetch(`/api/live-driver-stats?pin=${pin}`, { method: 'POST' });
         } else {
-          res = await fetch('/api/driver-stats?pin=${pin}', {
+          res = await fetch(`/api/driver-stats?pin=${pin}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ query: 'SELECT * FROM driver_stats ORDER BY total_completed DESC' })
