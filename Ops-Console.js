@@ -103,17 +103,32 @@ export default {
       return await handleNeonQuery(request, env);
     }
 
-    // 5. Test endpoint
+    // 5. Handle driver stats refresh API (computes and stores stats in driver_stats table)
+    if (path === "/api/refresh-driver-stats" && request.method === "POST") {
+      // Check PIN authentication for API
+      if (pinParam !== adminPin) {
+        return new Response(JSON.stringify({ error: "Unauthorized Access", code: "UNAUTHORIZED" }), { 
+          status: 401,
+          headers: { 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          }
+        });
+      }
+      return await handleRefreshDriverStats(env);
+    }
+
+    // 6. Test endpoint
     if (path === "/test") {
       return await testConnection(env);
     }
 
-    // 6. Serve the driver stats page
+    // 7. Serve the driver stats page
     if (path === "/drivers") {
       return serveDriverStats(url.searchParams.get("pin"));
     }
 
-    // 7. Serve the dashboard
+    // 8. Serve the dashboard
     if (path === "/") {
       return serveDashboard(url.searchParams.get("pin"));
     }
@@ -182,6 +197,137 @@ async function handleNeonQuery(request, env) {
       JSON.stringify({ 
         error: error.message,
         code: "QUERY_EXECUTION_ERROR"
+      }),
+      { 
+        status: 500, 
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        } 
+      }
+    );
+  }
+}
+
+// Function to refresh driver stats - computes stats and stores in driver_stats table
+async function handleRefreshDriverStats(env) {
+  try {
+    const connectionString = env.DATABASE_URL;
+    if (!connectionString) {
+      return new Response(
+        JSON.stringify({ 
+          error: "Database configuration missing. Please set DATABASE_URL.",
+          code: "NO_DB_CONFIG"
+        }),
+        { 
+          status: 500, 
+          headers: { 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          } 
+        }
+      );
+    }
+
+    const sql = neon(connectionString);
+
+    // Step 1: Clear existing stats
+    await sql`TRUNCATE TABLE driver_stats`;
+
+    // Step 2: Compute and insert fresh stats from driver_profiles and shipments
+    await sql`
+      INSERT INTO driver_stats (
+        id, first_name, last_name, email, is_online, profile_photo_url, driver_joined,
+        total_assigned, pending_count, assigned_count, in_transit_count, total_completed,
+        cancelled_count, failed_count, total_failed, week_completed, week_failed,
+        total_revenue, week_revenue, last_active, success_rate, cancel_rate,
+        avg_rating, rating_count, stats_updated_at
+      )
+      SELECT 
+        dp.id,
+        dp.first_name,
+        dp.last_name,
+        dp.email,
+        dp.is_online,
+        dp.profile_photo_url,
+        dp.created_at as driver_joined,
+        
+        -- Total shipments assigned to this driver
+        COUNT(s.id) as total_assigned,
+        
+        -- Shipment status breakdowns
+        COUNT(*) FILTER (WHERE s.status = 'PENDING') as pending_count,
+        COUNT(*) FILTER (WHERE s.status = 'ASSIGNED') as assigned_count,
+        COUNT(*) FILTER (WHERE s.status = 'PICKED_UP') as in_transit_count,
+        COUNT(*) FILTER (WHERE s.status = 'DELIVERED') as total_completed,
+        COUNT(*) FILTER (WHERE s.status = 'CANCELLED') as cancelled_count,
+        COUNT(*) FILTER (WHERE s.status = 'FAILED') as failed_count,
+        COUNT(*) FILTER (WHERE s.status IN ('CANCELLED', 'FAILED')) as total_failed,
+        
+        -- Weekly stats
+        COUNT(*) FILTER (WHERE s.status = 'DELIVERED' AND s.delivered_at > NOW() - INTERVAL '7 days') as week_completed,
+        COUNT(*) FILTER (WHERE s.status IN ('CANCELLED', 'FAILED') AND s.updated_at > NOW() - INTERVAL '7 days') as week_failed,
+        
+        -- Revenue calculations
+        COALESCE(SUM(s.price_cents) FILTER (WHERE s.status = 'DELIVERED'), 0) / 100.0 as total_revenue,
+        COALESCE(SUM(s.price_cents) FILTER (WHERE s.status = 'DELIVERED' AND s.delivered_at > NOW() - INTERVAL '7 days'), 0) / 100.0 as week_revenue,
+        
+        -- Activity tracking
+        MAX(GREATEST(s.delivered_at, dp.updated_at)) as last_active,
+        
+        -- Success rate calculation
+        CASE 
+          WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED', 'FAILED')) > 0
+          THEN (COUNT(*) FILTER (WHERE s.status = 'DELIVERED')::float / 
+                COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED', 'FAILED'))::float * 100)
+          ELSE NULL
+        END as success_rate,
+        
+        -- Cancellation rate
+        CASE 
+          WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED', 'FAILED')) > 0
+          THEN (COUNT(*) FILTER (WHERE s.status = 'CANCELLED')::float / 
+                COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED', 'FAILED'))::float * 100)
+          ELSE NULL
+        END as cancel_rate,
+        
+        -- Average rating
+        COALESCE(AVG(s.rating), 0) as avg_rating,
+        COUNT(s.rating) as rating_count,
+        
+        NOW() as stats_updated_at
+
+      FROM driver_profiles dp
+      LEFT JOIN shipments s ON s.driver_id = dp.id
+      WHERE dp.user_type = 'driver'
+      GROUP BY dp.id, dp.first_name, dp.last_name, dp.email, dp.is_online, dp.profile_photo_url, dp.created_at
+    `;
+
+    // Step 4: Get the count of updated drivers
+    const countResult = await sql`SELECT COUNT(*) as count FROM driver_stats`;
+    const driverCount = countResult[0]?.count || 0;
+
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        message: `Driver stats refreshed successfully`,
+        driversUpdated: parseInt(driverCount),
+        timestamp: new Date().toISOString()
+      }),
+      { 
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        } 
+      }
+    );
+
+  } catch (error) {
+    console.error('Driver stats refresh error:', error);
+    return new Response(
+      JSON.stringify({ 
+        error: error.message,
+        code: "STATS_REFRESH_ERROR"
       }),
       { 
         status: 500, 
@@ -924,6 +1070,11 @@ function serveDriverStats(pin) {
         Refresh
       </button>
       
+      <button onclick="recalculateStats()" class="group bg-purple-700 hover:bg-purple-600 border border-purple-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2">
+        <i data-lucide="database" class="w-4 h-4"></i>
+        Recalculate Stats
+      </button>
+      
       <button id="autoRefreshToggle" onclick="toggleAutoRefresh()" class="group bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-200 px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2">
         <i data-lucide="pause" class="w-4 h-4"></i>
         <span id="autoRefreshText">Pause Auto-refresh</span>
@@ -987,6 +1138,30 @@ function serveDriverStats(pin) {
       await loadDriverStats();
       document.getElementById('last-updated').innerText = 'Last updated: ' + new Date().toLocaleTimeString();
     }
+    
+    async function recalculateStats() {
+      try {
+        showToast("Recalculating driver stats...", "blue");
+        
+        const res = await fetch(\`/api/refresh-driver-stats?pin=${pin}\`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const data = await res.json();
+        
+        if (data.success) {
+          showToast(\`Stats refreshed: \${data.driversUpdated} drivers updated\`, "green");
+          await refreshData();
+        } else {
+          showToast(data.error || "Failed to recalculate stats", "red");
+        }
+        
+      } catch (e) {
+        console.error("Stats recalculation error", e);
+        showToast("Failed to recalculate stats", "red");
+      }
+    }
 
     async function loadDriverStats() {
       try {
@@ -995,61 +1170,32 @@ function serveDriverStats(pin) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
             query: \`SELECT 
-              dp.id,
-              dp.first_name,
-              dp.last_name,
-              dp.email,
-              dp.is_online,
-              dp.profile_photo_url,
-              dp.created_at as driver_joined,
-              
-              -- Total shipments assigned to this driver
-              COUNT(s.id) as total_assigned,
-              
-              -- Shipment status breakdowns
-              COUNT(*) FILTER (WHERE s.status = 'PENDING') as pending_count,
-              COUNT(*) FILTER (WHERE s.status = 'ASSIGNED') as assigned_count,
-              COUNT(*) FILTER (WHERE s.status = 'PICKED_UP') as in_transit_count,
-              COUNT(*) FILTER (WHERE s.status = 'DELIVERED') as total_completed,
-              COUNT(*) FILTER (WHERE s.status = 'CANCELLED') as cancelled_count,
-              COUNT(*) FILTER (WHERE s.status = 'FAILED') as failed_count,
-              COUNT(*) FILTER (WHERE s.status IN ('CANCELLED', 'FAILED')) as total_failed,
-              
-              -- Weekly stats
-              COUNT(*) FILTER (WHERE s.status = 'DELIVERED' AND s.delivered_at > NOW() - INTERVAL '7 days') as week_completed,
-              COUNT(*) FILTER (WHERE s.status IN ('CANCELLED', 'FAILED') AND s.updated_at > NOW() - INTERVAL '7 days') as week_failed,
-              
-              -- Revenue calculations
-              COALESCE(SUM(s.price_cents) FILTER (WHERE s.status = 'DELIVERED'), 0) / 100.0 as total_revenue,
-              COALESCE(SUM(s.price_cents) FILTER (WHERE s.status = 'DELIVERED' AND s.delivered_at > NOW() - INTERVAL '7 days'), 0) / 100.0 as week_revenue,
-              
-              -- Activity tracking
-              MAX(GREATEST(s.delivered_at, dp.updated_at)) as last_active,
-              
-              -- Success rate calculation
-              CASE 
-                WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED', 'FAILED')) > 0
-                THEN (COUNT(*) FILTER (WHERE s.status = 'DELIVERED')::float / 
-                      COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED', 'FAILED'))::float * 100)
-                ELSE NULL
-              END as success_rate,
-              
-              -- Cancellation rate
-              CASE 
-                WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED', 'FAILED')) > 0
-                THEN (COUNT(*) FILTER (WHERE s.status = 'CANCELLED')::float / 
-                      COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED', 'FAILED'))::float * 100)
-                ELSE NULL
-              END as cancel_rate,
-              
-              -- Average rating
-              COALESCE(AVG(s.rating), 0) as avg_rating,
-              COUNT(s.rating) as rating_count
-
-            FROM driver_profiles dp
-            LEFT JOIN shipments s ON s.driver_id = dp.id
-            WHERE dp.user_type = 'driver'
-            GROUP BY dp.id, dp.first_name, dp.last_name, dp.email, dp.is_online, dp.profile_photo_url, dp.created_at
+              id,
+              first_name,
+              last_name,
+              email,
+              is_online,
+              profile_photo_url,
+              driver_joined,
+              total_assigned,
+              pending_count,
+              assigned_count,
+              in_transit_count,
+              total_completed,
+              cancelled_count,
+              failed_count,
+              total_failed,
+              week_completed,
+              week_failed,
+              total_revenue,
+              week_revenue,
+              last_active,
+              success_rate,
+              cancel_rate,
+              avg_rating,
+              rating_count,
+              stats_updated_at
+            FROM driver_stats
             ORDER BY total_completed DESC\`
           })
         });
@@ -1057,8 +1203,13 @@ function serveDriverStats(pin) {
         const data = await res.json();
         allDrivers = data.rows || [];
         
+        // Get the stats update timestamp if available
+        const statsTime = allDrivers.length > 0 && allDrivers[0].stats_updated_at 
+          ? new Date(allDrivers[0].stats_updated_at).toLocaleString() 
+          : 'Unknown';
+        
         document.getElementById('status-indicator').className = "w-2 h-2 rounded-full bg-green-500";
-        document.getElementById('status-text').innerText = "Connected - " + allDrivers.length + " drivers";
+        document.getElementById('status-text').innerText = "Connected - " + allDrivers.length + " drivers (Stats: " + statsTime + ")";
         
         applySortAndFilter();
         
@@ -1066,7 +1217,7 @@ function serveDriverStats(pin) {
         console.error("Driver stats error", e);
         document.getElementById('status-indicator').className = "w-2 h-2 rounded-full bg-red-500";
         document.getElementById('status-text').innerText = "Connection Error";
-        showToast("Failed to load driver statistics", "red");
+        showToast("Failed to load driver statistics. Try refreshing stats first.", "red");
       }
     }
 
@@ -1418,7 +1569,9 @@ function serveDriverStats(pin) {
     function showToast(msg, color) {
       const container = document.getElementById('toast-container');
       const div = document.createElement('div');
-      const bg = color === 'green' ? 'bg-green-600' : 'bg-red-600';
+      let bg = 'bg-red-600';
+      if (color === 'green') bg = 'bg-green-600';
+      else if (color === 'blue') bg = 'bg-blue-600';
       div.className = bg + " text-white px-4 py-2 rounded shadow-lg mb-2 text-sm font-bold animate-bounce pointer-events-auto";
       div.innerText = msg;
       container.appendChild(div);
