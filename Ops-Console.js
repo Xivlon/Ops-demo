@@ -1369,8 +1369,8 @@ function serveDriverStats(pin) {
         const cancelRate = driver.cancel_rate !== null && driver.cancel_rate !== undefined 
           ? parseFloat(driver.cancel_rate)
           : null;
-        const weekCompleted = parseInt(driver.week_completed) || 0;
-        const totalAssigned = parseInt(driver.total_assigned) || 0;
+        const weekCompleted = parseInt(driver.week_completed, 10) || 0;
+        const totalAssigned = parseInt(driver.total_assigned, 10) || 0;
         
         // Fixed performance classification with clear, non-overlapping conditions
         let performanceClass = 'performance-average';
@@ -1390,7 +1390,7 @@ function serveDriverStats(pin) {
           performanceBadge = '<span class="text-xs bg-red-500/20 text-red-400 px-2 py-1 rounded">Needs Attention</span>';
         }
         
-        const rating = parseFloat(driver.avg_rating) || 0;
+        const rating = driver.avg_rating ? parseFloat(driver.avg_rating) : 0;
         const ratingCount = driver.rating_count || 0;
         const stars = '★'.repeat(Math.round(rating)) + '☆'.repeat(5 - Math.round(rating));
         
