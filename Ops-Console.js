@@ -231,80 +231,69 @@ async function handleRefreshDriverStats(env) {
 
     const sql = neon(connectionString);
 
-    // Use sql.transaction() for atomic operations - the neon() function's individual queries
-    // are stateless HTTP requests that don't support BEGIN/COMMIT/ROLLBACK separately.
-    // sql.transaction() executes multiple queries atomically in a single transaction.
-    await sql.transaction([
-      sql`TRUNCATE TABLE driver_stats`,
-      sql`
-        INSERT INTO driver_stats (
-          id, first_name, last_name, email, is_online, profile_photo_url, driver_joined,
-          total_assigned, pending_count, assigned_count, in_transit_count, total_completed,
-          cancelled_count, failed_count, total_failed, week_completed, week_failed,
-          total_revenue, week_revenue, last_active, success_rate, cancel_rate,
-          avg_rating, rating_count, stats_updated_at
-        )
-        SELECT 
-          dp.id,
-          dp.first_name,
-          dp.last_name,
-          dp.email,
-          dp.is_online,
-          dp.profile_photo_url,
-          dp.created_at as driver_joined,
-          
-          -- Total shipments assigned to this driver
-          -- Note: For drivers with no shipments (due to LEFT JOIN), this will be 0
-          COUNT(s.id) as total_assigned,
-          
-          -- Shipment status breakdowns
-          COUNT(*) FILTER (WHERE s.status = 'PENDING') as pending_count,
-          COUNT(*) FILTER (WHERE s.status = 'ASSIGNED') as assigned_count,
-          COUNT(*) FILTER (WHERE s.status = 'PICKED_UP') as in_transit_count,
-          COUNT(*) FILTER (WHERE s.status = 'DELIVERED') as total_completed,
-          COUNT(*) FILTER (WHERE s.status = 'CANCELLED') as cancelled_count,
-          COUNT(*) FILTER (WHERE s.status = 'FAILED') as failed_count,
-          COUNT(*) FILTER (WHERE s.status IN ('CANCELLED', 'FAILED')) as total_failed,
-          
-          -- Weekly stats
-          COUNT(*) FILTER (WHERE s.status = 'DELIVERED' AND s.delivered_at > NOW() - INTERVAL '7 days') as week_completed,
-          COUNT(*) FILTER (WHERE s.status IN ('CANCELLED', 'FAILED') AND s.updated_at > NOW() - INTERVAL '7 days') as week_failed,
-          
-          -- Revenue calculations
-          COALESCE(SUM(s.price_cents) FILTER (WHERE s.status = 'DELIVERED'), 0) / 100.0 as total_revenue,
-          COALESCE(SUM(s.price_cents) FILTER (WHERE s.status = 'DELIVERED' AND s.delivered_at > NOW() - INTERVAL '7 days'), 0) / 100.0 as week_revenue,
-          
-          -- Activity tracking (use COALESCE to handle NULL from LEFT JOIN for drivers with no shipments)
-          MAX(COALESCE(GREATEST(s.delivered_at, dp.updated_at), dp.updated_at)) as last_active,
-          
-          -- Success rate calculation
-          CASE 
-            WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED', 'FAILED')) > 0
-            THEN (COUNT(*) FILTER (WHERE s.status = 'DELIVERED')::float / 
-                  COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED', 'FAILED'))::float * 100)
-            ELSE NULL
-          END as success_rate,
-          
-          -- Cancellation rate
-          CASE 
-            WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED', 'FAILED')) > 0
-            THEN (COUNT(*) FILTER (WHERE s.status = 'CANCELLED')::float / 
-                  COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED', 'FAILED'))::float * 100)
-            ELSE NULL
-          END as cancel_rate,
-          
-          -- Average rating
-          COALESCE(AVG(s.rating), 0) as avg_rating,
-          COUNT(s.rating) as rating_count,
-          
-          NOW() as stats_updated_at
+    // Execute TRUNCATE and INSERT sequentially (no explicit transaction needed)
+    // The Neon serverless driver executes each sql call as a separate stateless HTTP request
+    await sql`TRUNCATE TABLE driver_stats`;
 
-        FROM driver_profiles dp
-        LEFT JOIN shipments s ON s.driver_id = dp.id
-        WHERE dp.user_type = 'driver'
-        GROUP BY dp.id, dp.first_name, dp.last_name, dp.email, dp.is_online, dp.profile_photo_url, dp.created_at
-      `
-    ]);
+    await sql`
+      INSERT INTO driver_stats (
+        id, first_name, last_name, email, is_online, profile_photo_url, driver_joined,
+        total_assigned, pending_count, assigned_count, in_transit_count, total_completed,
+        cancelled_count, failed_count, total_failed, week_completed, week_failed,
+        total_revenue, week_revenue, last_active, success_rate, cancel_rate,
+        avg_rating, rating_count, stats_updated_at
+      )
+      SELECT 
+        dp.id,
+        dp.first_name,
+        dp.last_name,
+        dp.email,
+        dp.is_online,
+        dp.profile_photo_url,
+        dp.created_at as driver_joined,
+        
+        COUNT(s.id) as total_assigned,
+        
+        COUNT(*) FILTER (WHERE s.status = 'PENDING') as pending_count,
+        COUNT(*) FILTER (WHERE s.status = 'ASSIGNED') as assigned_count,
+        COUNT(*) FILTER (WHERE s.status = 'PICKED_UP') as in_transit_count,
+        COUNT(*) FILTER (WHERE s.status = 'DELIVERED') as total_completed,
+        COUNT(*) FILTER (WHERE s.status = 'CANCELLED') as cancelled_count,
+        COUNT(*) FILTER (WHERE s.status = 'FAILED') as failed_count,
+        COUNT(*) FILTER (WHERE s.status IN ('CANCELLED', 'FAILED')) as total_failed,
+        
+        COUNT(*) FILTER (WHERE s.status = 'DELIVERED' AND s.delivered_at > NOW() - INTERVAL '7 days') as week_completed,
+        COUNT(*) FILTER (WHERE s.status IN ('CANCELLED', 'FAILED') AND s.updated_at > NOW() - INTERVAL '7 days') as week_failed,
+        
+        COALESCE(SUM(s.price_cents) FILTER (WHERE s.status = 'DELIVERED'), 0) / 100.0 as total_revenue,
+        COALESCE(SUM(s.price_cents) FILTER (WHERE s.status = 'DELIVERED' AND s.delivered_at > NOW() - INTERVAL '7 days'), 0) / 100.0 as week_revenue,
+        
+        MAX(COALESCE(GREATEST(s.delivered_at, dp.updated_at), dp.updated_at)) as last_active,
+        
+        CASE 
+          WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED', 'FAILED')) > 0
+          THEN (COUNT(*) FILTER (WHERE s.status = 'DELIVERED')::float / 
+                COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED', 'FAILED'))::float * 100)
+          ELSE NULL
+        END as success_rate,
+        
+        CASE 
+          WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED', 'FAILED')) > 0
+          THEN (COUNT(*) FILTER (WHERE s.status = 'CANCELLED')::float / 
+                COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED', 'FAILED'))::float * 100)
+          ELSE NULL
+        END as cancel_rate,
+        
+        COALESCE(AVG(s.rating), 0) as avg_rating,
+        COUNT(s.rating) as rating_count,
+        
+        NOW() as stats_updated_at
+
+      FROM driver_profiles dp
+      LEFT JOIN shipments s ON s.driver_id = dp.id
+      WHERE dp.user_type = 'driver'
+      GROUP BY dp.id, dp.first_name, dp.last_name, dp.email, dp.is_online, dp.profile_photo_url, dp.created_at
+    `;
 
     // Get the count of updated drivers
     const countResult = await sql`SELECT COUNT(*) as count FROM driver_stats`;
