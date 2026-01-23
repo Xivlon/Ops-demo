@@ -315,13 +315,13 @@ async function handleRefreshDriverStats(env) {
         0 as failed_count,
         COUNT(*) FILTER (WHERE s.status = 'CANCELLED') as total_failed,
         
-        -- Weekly stats
-        COUNT(*) FILTER (WHERE s.status = 'DELIVERED' AND s.delivered_at > NOW() - INTERVAL '7 days') as week_completed,
+        -- Weekly stats (use COALESCE to fall back to updated_at if delivered_at is NULL)
+        COUNT(*) FILTER (WHERE s.status = 'DELIVERED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days') as week_completed,
         COUNT(*) FILTER (WHERE s.status = 'CANCELLED' AND s.updated_at > NOW() - INTERVAL '7 days') as week_failed,
         
-        -- Revenue calculations
+        -- Revenue calculations (use COALESCE to fall back to updated_at if delivered_at is NULL)
         COALESCE(SUM(s.price_cents) FILTER (WHERE s.status = 'DELIVERED'), 0) / 100.0 as total_revenue,
-        COALESCE(SUM(s.price_cents) FILTER (WHERE s.status = 'DELIVERED' AND s.delivered_at > NOW() - INTERVAL '7 days'), 0) / 100.0 as week_revenue,
+        COALESCE(SUM(s.price_cents) FILTER (WHERE s.status = 'DELIVERED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days'), 0) / 100.0 as week_revenue,
         
         -- Activity tracking (use COALESCE to handle NULL from LEFT JOIN for drivers with no shipments)
         MAX(COALESCE(GREATEST(s.delivered_at, dp.account_updated_at), dp.account_updated_at)) as last_active,
@@ -581,7 +581,7 @@ function serveDashboard(pin) {
                 <option value="">All Statuses</option>
                 <option value="PENDING">Pending</option>
                 <option value="ASSIGNED">Assigned</option>
-                <option value="PICKED_UP">Picked Up</option>
+                <option value="PICKED_UP">In-Transit</option>
                 <option value="DELIVERED">Delivered</option>
              </select>
          </div>
@@ -1236,51 +1236,78 @@ function serveDriverStats(pin) {
 
     async function loadDriverStats() {
       try {
+        // Query shipments table directly for real-time driver stats
         const res = await fetch(\`/api/driver-stats?pin=${pin}\`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
             query: \`SELECT 
-              id,
-              first_name,
-              last_name,
-              email,
-              is_online,
-              profile_photo_url,
-              driver_joined,
-              total_assigned,
-              pending_count,
-              assigned_count,
-              in_transit_count,
-              total_completed,
-              cancelled_count,
-              failed_count,
-              total_failed,
-              week_completed,
-              week_failed,
-              total_revenue,
-              week_revenue,
-              last_active,
-              success_rate,
-              cancel_rate,
-              avg_rating,
-              rating_count,
-              stats_updated_at
-            FROM driver_stats
-            ORDER BY total_completed DESC\`
+              dp.id,
+              dp.first_name,
+              dp.last_name,
+              dp.email,
+              dp.is_online,
+              dp.profile_photo_url,
+              dp.account_created_at as driver_joined,
+              
+              -- Total shipments assigned to this driver
+              COUNT(s.id) as total_assigned,
+              
+              -- Shipment status breakdowns
+              COUNT(*) FILTER (WHERE s.status = 'PENDING') as pending_count,
+              COUNT(*) FILTER (WHERE s.status = 'ASSIGNED') as assigned_count,
+              COUNT(*) FILTER (WHERE s.status = 'PICKED_UP') as in_transit_count,
+              COUNT(*) FILTER (WHERE s.status = 'DELIVERED') as total_completed,
+              COUNT(*) FILTER (WHERE s.status = 'CANCELLED') as cancelled_count,
+              0 as failed_count,
+              COUNT(*) FILTER (WHERE s.status = 'CANCELLED') as total_failed,
+              
+              -- Weekly stats (use COALESCE to fall back to updated_at if delivered_at is NULL)
+              COUNT(*) FILTER (WHERE s.status = 'DELIVERED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days') as week_completed,
+              COUNT(*) FILTER (WHERE s.status = 'CANCELLED' AND s.updated_at > NOW() - INTERVAL '7 days') as week_failed,
+              
+              -- Revenue calculations (use COALESCE to fall back to updated_at if delivered_at is NULL)
+              COALESCE(SUM(s.price_cents) FILTER (WHERE s.status = 'DELIVERED'), 0) / 100.0 as total_revenue,
+              COALESCE(SUM(s.price_cents) FILTER (WHERE s.status = 'DELIVERED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days'), 0) / 100.0 as week_revenue,
+              
+              -- Activity tracking
+              MAX(COALESCE(GREATEST(s.delivered_at, dp.account_updated_at), dp.account_updated_at)) as last_active,
+              
+              -- Success rate calculation
+              CASE 
+                WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED')) > 0
+                THEN (COUNT(*) FILTER (WHERE s.status = 'DELIVERED')::float / 
+                      COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED'))::float * 100)
+                ELSE NULL
+              END as success_rate,
+              
+              -- Cancellation rate
+              CASE 
+                WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED')) > 0
+                THEN (COUNT(*) FILTER (WHERE s.status = 'CANCELLED')::float / 
+                      COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED'))::float * 100)
+                ELSE NULL
+              END as cancel_rate,
+              
+              -- Average rating (placeholder - ratings not implemented)
+              0 as avg_rating,
+              0 as rating_count,
+              
+              NOW() as stats_updated_at
+
+            FROM driver_profiles dp
+            LEFT JOIN shipments s ON s.driver_id = dp.id
+            WHERE dp.user_type = 'driver'
+            GROUP BY dp.id, dp.first_name, dp.last_name, dp.email, dp.is_online, dp.profile_photo_url, dp.account_created_at, dp.account_updated_at
+            ORDER BY COUNT(*) FILTER (WHERE s.status = 'DELIVERED') DESC\`
           })
         });
         
         const data = await res.json();
         allDrivers = data.rows || [];
         
-        // Get the stats update timestamp if available
-        const statsTime = allDrivers.length > 0 && allDrivers[0].stats_updated_at 
-          ? new Date(allDrivers[0].stats_updated_at).toLocaleString() 
-          : 'Unknown';
-        
         document.getElementById('status-indicator').className = "w-2 h-2 rounded-full bg-green-500";
-        document.getElementById('status-text').innerText = "Connected - " + allDrivers.length + " drivers (Stats: " + statsTime + ")";
+        document.getElementById('status-text').innerText = "Connected - " + allDrivers.length + " drivers (Live Data)";
         
         applySortAndFilter();
         
@@ -1288,7 +1315,7 @@ function serveDriverStats(pin) {
         console.error("Driver stats error", e);
         document.getElementById('status-indicator').className = "w-2 h-2 rounded-full bg-red-500";
         document.getElementById('status-text').innerText = "Connection Error";
-        showToast("Failed to load driver statistics. Try refreshing stats first.", "red");
+        showToast("Failed to load driver statistics.", "red");
       }
     }
 
@@ -1305,13 +1332,52 @@ function serveDriverStats(pin) {
       
       const perfFilter = document.getElementById('filterPerformance').value;
       if (perfFilter === 'high') {
-        filtered = filtered.filter(d => d.success_rate >= 90 && d.week_completed >= 20);
+        // High performers: must have data AND meet both thresholds
+        filtered = filtered.filter(d => 
+          d.success_rate !== null && 
+          d.success_rate !== undefined && 
+          d.success_rate >= 90 && 
+          (parseInt(d.week_completed, 10) || 0) >= 20
+        );
       } else if (perfFilter === 'attention') {
-        filtered = filtered.filter(d => d.success_rate < 70 || d.week_completed < 5);
+        // Needs attention: no data OR poor success rate OR low activity
+        filtered = filtered.filter(d => {
+          const successRate = d.success_rate;
+          const weekCompleted = parseInt(d.week_completed, 10) || 0;
+          // Include drivers with no data, low success rate, or low activity
+          return successRate === null || 
+                 successRate === undefined || 
+                 successRate < 70 || 
+                 weekCompleted < 5;
+        });
       }
       
       // Apply sort
       const sortBy = document.getElementById('sortBy').value;
+      
+      // Helper function to handle NULL values in sorting
+      // NULL values are sorted to the end regardless of sort direction
+      const compareWithNulls = (aVal, bVal, descending) => {
+        const aIsNull = aVal === null || aVal === undefined;
+        const bIsNull = bVal === null || bVal === undefined;
+        if (aIsNull && bIsNull) return 0;
+        if (aIsNull) return 1;  // a goes to end
+        if (bIsNull) return -1; // b goes to end
+        return descending ? bVal - aVal : aVal - bVal;
+      };
+      
+      // Helper function for date comparison with NULL handling
+      const compareDatesWithNulls = (aVal, bVal, descending) => {
+        const aIsNull = !aVal;
+        const bIsNull = !bVal;
+        if (aIsNull && bIsNull) return 0;
+        if (aIsNull) return 1;  // a goes to end
+        if (bIsNull) return -1; // b goes to end
+        const aDate = new Date(aVal);
+        const bDate = new Date(bVal);
+        return descending ? bDate - aDate : aDate - bDate;
+      };
+      
       filtered.sort((a, b) => {
         switch(sortBy) {
           case 'deliveries-desc': return (b.total_completed || 0) - (a.total_completed || 0);
@@ -1322,14 +1388,12 @@ function serveDriverStats(pin) {
           case 'revenue-asc': return (a.total_revenue || 0) - (b.total_revenue || 0);
           case 'rating-desc': return (b.avg_rating || 0) - (a.avg_rating || 0);
           case 'rating-asc': return (a.avg_rating || 0) - (b.avg_rating || 0);
-          case 'success-desc': return (b.success_rate || 0) - (a.success_rate || 0);
-          case 'success-asc': return (a.success_rate || 0) - (b.success_rate || 0);
-          case 'cancel-desc': return (b.cancel_rate || 0) - (a.cancel_rate || 0);
-          case 'cancel-asc': return (a.cancel_rate || 0) - (b.cancel_rate || 0);
-          case 'active-recent': 
-            return new Date(b.last_active || 0) - new Date(a.last_active || 0);
-          case 'active-oldest': 
-            return new Date(a.last_active || 0) - new Date(b.last_active || 0);
+          case 'success-desc': return compareWithNulls(a.success_rate, b.success_rate, true);
+          case 'success-asc': return compareWithNulls(a.success_rate, b.success_rate, false);
+          case 'cancel-desc': return compareWithNulls(a.cancel_rate, b.cancel_rate, true);
+          case 'cancel-asc': return compareWithNulls(a.cancel_rate, b.cancel_rate, false);
+          case 'active-recent': return compareDatesWithNulls(a.last_active, b.last_active, true);
+          case 'active-oldest': return compareDatesWithNulls(a.last_active, b.last_active, false);
           default: return 0;
         }
       });
@@ -1372,22 +1436,21 @@ function serveDriverStats(pin) {
         const weekCompleted = parseInt(driver.week_completed, 10) || 0;
         const totalAssigned = parseInt(driver.total_assigned, 10) || 0;
         
-        // Fixed performance classification with clear, non-overlapping conditions
+        // Performance classification consistent with filter logic
+        // Needs attention: no data OR poor success rate OR low activity
+        // High performer: has data AND great success rate AND high activity
+        // Average: everything else
         let performanceClass = 'performance-average';
         let performanceBadge = '<span class="text-xs bg-yellow-500/20 text-yellow-400 px-2 py-1 rounded">Average</span>';
         
-        if (successRate === null) {
-          // No shipment data
-          performanceClass = 'performance-average';
-          performanceBadge = '<span class="text-xs bg-slate-500/20 text-slate-400 px-2 py-1 rounded">No Data</span>';
+        if (successRate === null || successRate < 70 || weekCompleted < 5) {
+          // Needs attention: no data, poor success rate, or low activity
+          performanceClass = 'performance-low';
+          performanceBadge = '<span class="text-xs bg-red-500/20 text-red-400 px-2 py-1 rounded">Needs Attention</span>';
         } else if (successRate >= 90 && weekCompleted >= 20) {
           // High performer: great success rate AND high activity
           performanceClass = 'performance-high';
           performanceBadge = '<span class="text-xs bg-green-500/20 text-green-400 px-2 py-1 rounded">High Performer</span>';
-        } else if (successRate < 70 || weekCompleted < 5) {
-          // Needs attention: poor success rate OR low activity
-          performanceClass = 'performance-low';
-          performanceBadge = '<span class="text-xs bg-red-500/20 text-red-400 px-2 py-1 rounded">Needs Attention</span>';
         }
         
         const rating = driver.avg_rating ? parseFloat(driver.avg_rating) : 0;
@@ -1531,13 +1594,13 @@ function serveDriverStats(pin) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
             query: \`SELECT 
-              DATE(delivered_at) as delivery_date,
+              DATE(COALESCE(delivered_at, updated_at)) as delivery_date,
               COUNT(*) as deliveries_count
             FROM shipments
             WHERE driver_id = \$1 
               AND status = 'DELIVERED'
-              AND delivered_at > NOW() - INTERVAL '30 days'
-            GROUP BY DATE(delivered_at)
+              AND COALESCE(delivered_at, updated_at) > NOW() - INTERVAL '30 days'
+            GROUP BY DATE(COALESCE(delivered_at, updated_at))
             ORDER BY delivery_date ASC\`,
             params: [driverId]
           })
