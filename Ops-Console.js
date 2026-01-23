@@ -232,35 +232,55 @@ async function handleRefreshDriverStats(env) {
     const sql = neon(connectionString);
 
     // Create the driver_stats table if it doesn't exist
-    await sql`
-      CREATE TABLE IF NOT EXISTS driver_stats (
-        id UUID PRIMARY KEY,
-        first_name VARCHAR(255),
-        last_name VARCHAR(255),
-        email VARCHAR(255),
-        is_online BOOLEAN,
-        profile_photo_url TEXT,
-        driver_joined TIMESTAMP,
-        total_assigned INTEGER DEFAULT 0,
-        pending_count INTEGER DEFAULT 0,
-        assigned_count INTEGER DEFAULT 0,
-        in_transit_count INTEGER DEFAULT 0,
-        total_completed INTEGER DEFAULT 0,
-        cancelled_count INTEGER DEFAULT 0,
-        failed_count INTEGER DEFAULT 0,
-        total_failed INTEGER DEFAULT 0,
-        week_completed INTEGER DEFAULT 0,
-        week_failed INTEGER DEFAULT 0,
-        total_revenue DECIMAL(10, 2) DEFAULT 0,
-        week_revenue DECIMAL(10, 2) DEFAULT 0,
-        last_active TIMESTAMP,
-        success_rate DECIMAL(5, 2),
-        cancel_rate DECIMAL(5, 2),
-        avg_rating DECIMAL(3, 2) DEFAULT 0,
-        rating_count INTEGER DEFAULT 0,
-        stats_updated_at TIMESTAMP DEFAULT NOW()
-      )
-    `;
+    // This ensures the table schema is always up-to-date and prevents 500 errors
+    // when the table hasn't been created yet
+    try {
+      await sql`
+        CREATE TABLE IF NOT EXISTS driver_stats (
+          id UUID PRIMARY KEY,
+          first_name VARCHAR(255),
+          last_name VARCHAR(255),
+          email VARCHAR(255),
+          is_online BOOLEAN,
+          profile_photo_url TEXT,
+          driver_joined TIMESTAMP,
+          total_assigned INTEGER DEFAULT 0,
+          pending_count INTEGER DEFAULT 0,
+          assigned_count INTEGER DEFAULT 0,
+          in_transit_count INTEGER DEFAULT 0,
+          total_completed INTEGER DEFAULT 0,
+          cancelled_count INTEGER DEFAULT 0,
+          failed_count INTEGER DEFAULT 0,
+          total_failed INTEGER DEFAULT 0,
+          week_completed INTEGER DEFAULT 0,
+          week_failed INTEGER DEFAULT 0,
+          total_revenue DECIMAL(10, 2) DEFAULT 0,
+          week_revenue DECIMAL(10, 2) DEFAULT 0,
+          last_active TIMESTAMP,
+          success_rate DECIMAL(5, 2),
+          cancel_rate DECIMAL(5, 2),
+          avg_rating DECIMAL(3, 2) DEFAULT 0,
+          rating_count INTEGER DEFAULT 0,
+          stats_updated_at TIMESTAMP DEFAULT NOW()
+        )
+      `;
+      console.log('Driver stats table verified/created successfully');
+    } catch (tableError) {
+      console.error('Error creating driver_stats table:', tableError);
+      return new Response(
+        JSON.stringify({ 
+          error: `Failed to create driver_stats table: ${tableError.message}`,
+          code: "TABLE_CREATION_ERROR"
+        }),
+        { 
+          status: 500, 
+          headers: { 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          } 
+        }
+      );
+    }
 
     // Execute TRUNCATE and INSERT sequentially (no explicit transaction needed)
     // The Neon serverless driver executes each sql call as a separate stateless HTTP request
@@ -1151,6 +1171,12 @@ function serveDriverStats(pin) {
       const text = document.getElementById('autoRefreshText');
       const icon = btn?.querySelector('i');
       
+      // Early return if required elements are not found
+      if (!btn || !text) {
+        console.error('Auto-refresh toggle elements not found');
+        return;
+      }
+      
       if (autoRefreshEnabled) {
         text.innerText = 'Pause Auto-refresh';
         if (icon) icon.setAttribute('data-lucide', 'pause');
@@ -1163,12 +1189,22 @@ function serveDriverStats(pin) {
           autoRefreshInterval = null;
         }
       }
+      
+      // Reinitialize Lucide icons after changing attributes
       lucide.createIcons();
     }
 
     async function refreshData() {
-      await loadDriverStats();
-      document.getElementById('last-updated').innerText = 'Last updated: ' + new Date().toLocaleTimeString();
+      try {
+        await loadDriverStats();
+        const lastUpdatedEl = document.getElementById('last-updated');
+        if (lastUpdatedEl) {
+          lastUpdatedEl.innerText = 'Last updated: ' + new Date().toLocaleTimeString();
+        }
+      } catch (error) {
+        console.error('Error refreshing driver stats:', error);
+        showToast('Failed to refresh driver stats', 'red');
+      }
     }
     
     async function recalculateStats() {
