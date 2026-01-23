@@ -1236,51 +1236,78 @@ function serveDriverStats(pin) {
 
     async function loadDriverStats() {
       try {
+        // Query shipments table directly for real-time driver stats
         const res = await fetch(\`/api/driver-stats?pin=${pin}\`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
             query: \`SELECT 
-              id,
-              first_name,
-              last_name,
-              email,
-              is_online,
-              profile_photo_url,
-              driver_joined,
-              total_assigned,
-              pending_count,
-              assigned_count,
-              in_transit_count,
-              total_completed,
-              cancelled_count,
-              failed_count,
-              total_failed,
-              week_completed,
-              week_failed,
-              total_revenue,
-              week_revenue,
-              last_active,
-              success_rate,
-              cancel_rate,
-              avg_rating,
-              rating_count,
-              stats_updated_at
-            FROM driver_stats
-            ORDER BY total_completed DESC\`
+              dp.id,
+              dp.first_name,
+              dp.last_name,
+              dp.email,
+              dp.is_online,
+              dp.profile_photo_url,
+              dp.account_created_at as driver_joined,
+              
+              -- Total shipments assigned to this driver
+              COUNT(s.id) as total_assigned,
+              
+              -- Shipment status breakdowns
+              COUNT(*) FILTER (WHERE s.status = 'PENDING') as pending_count,
+              COUNT(*) FILTER (WHERE s.status = 'ASSIGNED') as assigned_count,
+              COUNT(*) FILTER (WHERE s.status = 'PICKED_UP') as in_transit_count,
+              COUNT(*) FILTER (WHERE s.status = 'DELIVERED') as total_completed,
+              COUNT(*) FILTER (WHERE s.status = 'CANCELLED') as cancelled_count,
+              0 as failed_count,
+              COUNT(*) FILTER (WHERE s.status = 'CANCELLED') as total_failed,
+              
+              -- Weekly stats (use COALESCE to fall back to updated_at if delivered_at is NULL)
+              COUNT(*) FILTER (WHERE s.status = 'DELIVERED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days') as week_completed,
+              COUNT(*) FILTER (WHERE s.status = 'CANCELLED' AND s.updated_at > NOW() - INTERVAL '7 days') as week_failed,
+              
+              -- Revenue calculations (use COALESCE to fall back to updated_at if delivered_at is NULL)
+              COALESCE(SUM(s.price_cents) FILTER (WHERE s.status = 'DELIVERED'), 0) / 100.0 as total_revenue,
+              COALESCE(SUM(s.price_cents) FILTER (WHERE s.status = 'DELIVERED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days'), 0) / 100.0 as week_revenue,
+              
+              -- Activity tracking
+              MAX(COALESCE(GREATEST(s.delivered_at, dp.account_updated_at), dp.account_updated_at)) as last_active,
+              
+              -- Success rate calculation
+              CASE 
+                WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED')) > 0
+                THEN (COUNT(*) FILTER (WHERE s.status = 'DELIVERED')::float / 
+                      COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED'))::float * 100)
+                ELSE NULL
+              END as success_rate,
+              
+              -- Cancellation rate
+              CASE 
+                WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED')) > 0
+                THEN (COUNT(*) FILTER (WHERE s.status = 'CANCELLED')::float / 
+                      COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED'))::float * 100)
+                ELSE NULL
+              END as cancel_rate,
+              
+              -- Average rating (placeholder - ratings not implemented)
+              0 as avg_rating,
+              0 as rating_count,
+              
+              NOW() as stats_updated_at
+
+            FROM driver_profiles dp
+            LEFT JOIN shipments s ON s.driver_id = dp.id
+            WHERE dp.user_type = 'driver'
+            GROUP BY dp.id, dp.first_name, dp.last_name, dp.email, dp.is_online, dp.profile_photo_url, dp.account_created_at, dp.account_updated_at
+            ORDER BY COUNT(*) FILTER (WHERE s.status = 'DELIVERED') DESC\`
           })
         });
         
         const data = await res.json();
         allDrivers = data.rows || [];
         
-        // Get the stats update timestamp if available
-        const statsTime = allDrivers.length > 0 && allDrivers[0].stats_updated_at 
-          ? new Date(allDrivers[0].stats_updated_at).toLocaleString() 
-          : 'Unknown';
-        
         document.getElementById('status-indicator').className = "w-2 h-2 rounded-full bg-green-500";
-        document.getElementById('status-text').innerText = "Connected - " + allDrivers.length + " drivers (Stats: " + statsTime + ")";
+        document.getElementById('status-text').innerText = "Connected - " + allDrivers.length + " drivers (Live Data)";
         
         applySortAndFilter();
         
@@ -1288,7 +1315,7 @@ function serveDriverStats(pin) {
         console.error("Driver stats error", e);
         document.getElementById('status-indicator').className = "w-2 h-2 rounded-full bg-red-500";
         document.getElementById('status-text').innerText = "Connection Error";
-        showToast("Failed to load driver statistics. Try refreshing stats first.", "red");
+        showToast("Failed to load driver statistics.", "red");
       }
     }
 
