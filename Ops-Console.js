@@ -252,8 +252,11 @@ async function handleRefreshDriverStats(env) {
         dp.profile_photo_url,
         dp.created_at as driver_joined,
         
+        -- Total shipments assigned to this driver
+        -- Note: For drivers with no shipments (due to LEFT JOIN), this will be 0
         COUNT(s.id) as total_assigned,
         
+        -- Shipment status breakdowns
         COUNT(*) FILTER (WHERE s.status = 'PENDING') as pending_count,
         COUNT(*) FILTER (WHERE s.status = 'ASSIGNED') as assigned_count,
         COUNT(*) FILTER (WHERE s.status = 'PICKED_UP') as in_transit_count,
@@ -262,14 +265,18 @@ async function handleRefreshDriverStats(env) {
         COUNT(*) FILTER (WHERE s.status = 'FAILED') as failed_count,
         COUNT(*) FILTER (WHERE s.status IN ('CANCELLED', 'FAILED')) as total_failed,
         
+        -- Weekly stats
         COUNT(*) FILTER (WHERE s.status = 'DELIVERED' AND s.delivered_at > NOW() - INTERVAL '7 days') as week_completed,
         COUNT(*) FILTER (WHERE s.status IN ('CANCELLED', 'FAILED') AND s.updated_at > NOW() - INTERVAL '7 days') as week_failed,
         
+        -- Revenue calculations
         COALESCE(SUM(s.price_cents) FILTER (WHERE s.status = 'DELIVERED'), 0) / 100.0 as total_revenue,
         COALESCE(SUM(s.price_cents) FILTER (WHERE s.status = 'DELIVERED' AND s.delivered_at > NOW() - INTERVAL '7 days'), 0) / 100.0 as week_revenue,
         
+        -- Activity tracking (use COALESCE to handle NULL from LEFT JOIN for drivers with no shipments)
         MAX(COALESCE(GREATEST(s.delivered_at, dp.updated_at), dp.updated_at)) as last_active,
         
+        -- Success rate calculation
         CASE 
           WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED', 'FAILED')) > 0
           THEN (COUNT(*) FILTER (WHERE s.status = 'DELIVERED')::float / 
@@ -277,6 +284,7 @@ async function handleRefreshDriverStats(env) {
           ELSE NULL
         END as success_rate,
         
+        -- Cancellation rate
         CASE 
           WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED', 'FAILED')) > 0
           THEN (COUNT(*) FILTER (WHERE s.status = 'CANCELLED')::float / 
@@ -284,6 +292,7 @@ async function handleRefreshDriverStats(env) {
           ELSE NULL
         END as cancel_rate,
         
+        -- Average rating
         COALESCE(AVG(s.rating), 0) as avg_rating,
         COUNT(s.rating) as rating_count,
         
