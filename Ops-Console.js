@@ -1275,7 +1275,23 @@ function serveDriverStats(pin) {
         allDrivers = data.rows || [];
         
         document.getElementById('status-indicator').className = "w-2 h-2 rounded-full bg-green-500";
-        document.getElementById('status-text').innerText = "Connected - " + allDrivers.length + " drivers (Cached)";
+        
+        // Show cache freshness - use stats_updated_at from the first driver record
+        let cacheInfo = "Cached";
+        if (allDrivers.length > 0 && allDrivers[0].stats_updated_at) {
+          const cacheTime = new Date(allDrivers[0].stats_updated_at);
+          const now = new Date();
+          const minutesAgo = Math.floor((now - cacheTime) / 60000);
+          if (minutesAgo < 1) {
+            cacheInfo = "Cached just now";
+          } else if (minutesAgo < 60) {
+            cacheInfo = \`Cached \${minutesAgo}m ago\`;
+          } else {
+            const hoursAgo = Math.floor(minutesAgo / 60);
+            cacheInfo = \`Cached \${hoursAgo}h ago\`;
+          }
+        }
+        document.getElementById('status-text').innerText = "Connected - " + allDrivers.length + " drivers (" + cacheInfo + ")";
         
         applySortAndFilter();
         
