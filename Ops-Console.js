@@ -1303,6 +1303,11 @@ function serveDriverStats(pin) {
         clearInterval(autoRefreshInterval);
         autoRefreshInterval = null;
       }
+      // Also stop the freshness update interval when auto-refresh is disabled
+      if (freshnessUpdateInterval) {
+        clearInterval(freshnessUpdateInterval);
+        freshnessUpdateInterval = null;
+      }
     }
     
     function updateCacheFreshness() {
@@ -1412,18 +1417,15 @@ function serveDriverStats(pin) {
       if (filterValue === 'high-performers') {
         filtered = filtered.filter(d => {
           // Only include drivers with valid success rate data
-          if (d.success_rate === null || d.success_rate === undefined) return false;
           const successRate = parseFloat(d.success_rate);
           const weekCompleted = parseInt(d.week_completed) || 0;
           return !isNaN(successRate) && successRate >= 90 && weekCompleted >= 20;
         });
       } else if (filterValue === 'needs-attention') {
         filtered = filtered.filter(d => {
-          // Include drivers with no data
-          if (d.success_rate === null || d.success_rate === undefined) return true;
           const successRate = parseFloat(d.success_rate);
           const weekCompleted = parseInt(d.week_completed) || 0;
-          // Include drivers with poor performance
+          // Include drivers with no data or poor performance
           return isNaN(successRate) || successRate < 70 || weekCompleted < 5;
         });
       }
