@@ -269,7 +269,7 @@ async function handleRefreshDriverStats(env) {
       console.error('Error creating driver_stats table:', tableError);
       return new Response(
         JSON.stringify({ 
-          error: `Failed to create driver_stats table: ${tableError.message}`,
+          error: `Failed to initialize driver stats database. Please contact support.`,
           code: "TABLE_CREATION_ERROR"
         }),
         { 
@@ -284,6 +284,7 @@ async function handleRefreshDriverStats(env) {
 
     // Execute TRUNCATE and INSERT sequentially (no explicit transaction needed)
     // The Neon serverless driver executes each sql call as a separate stateless HTTP request
+    // Note: TRUNCATE will only execute if table creation above succeeded or table already existed
     await sql`TRUNCATE TABLE driver_stats`;
 
     await sql`
