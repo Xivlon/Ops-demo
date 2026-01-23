@@ -253,11 +253,18 @@ async function handleRefreshDriverStats(env) {
           total_failed INTEGER DEFAULT 0,
           week_completed INTEGER DEFAULT 0,
           week_failed INTEGER DEFAULT 0,
+          month_completed INTEGER DEFAULT 0,
+          month_failed INTEGER DEFAULT 0,
           total_revenue DECIMAL(10, 2) DEFAULT 0,
           week_revenue DECIMAL(10, 2) DEFAULT 0,
+          month_revenue DECIMAL(10, 2) DEFAULT 0,
           last_active TIMESTAMP,
           success_rate DECIMAL(5, 2),
           cancel_rate DECIMAL(5, 2),
+          week_success_rate DECIMAL(5, 2),
+          week_cancel_rate DECIMAL(5, 2),
+          month_success_rate DECIMAL(5, 2),
+          month_cancel_rate DECIMAL(5, 2),
           avg_rating DECIMAL(3, 2) DEFAULT 0,
           rating_count INTEGER DEFAULT 0,
           stats_updated_at TIMESTAMP DEFAULT NOW()
@@ -291,7 +298,9 @@ async function handleRefreshDriverStats(env) {
         id, first_name, last_name, email, is_online, driver_joined,
         total_assigned, pending_count, assigned_count, in_transit_count, total_completed,
         cancelled_count, failed_count, total_failed, week_completed, week_failed,
-        total_revenue, week_revenue, last_active, success_rate, cancel_rate,
+        month_completed, month_failed, total_revenue, week_revenue, month_revenue,
+        last_active, success_rate, cancel_rate,
+        week_success_rate, week_cancel_rate, month_success_rate, month_cancel_rate,
         avg_rating, rating_count, stats_updated_at
       )
       SELECT 
@@ -319,14 +328,19 @@ async function handleRefreshDriverStats(env) {
         COUNT(*) FILTER (WHERE s.status = 'DELIVERED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days') as week_completed,
         COUNT(*) FILTER (WHERE s.status = 'CANCELLED' AND s.updated_at > NOW() - INTERVAL '7 days') as week_failed,
         
+        -- 30-day stats
+        COUNT(*) FILTER (WHERE s.status = 'DELIVERED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '30 days') as month_completed,
+        COUNT(*) FILTER (WHERE s.status = 'CANCELLED' AND s.updated_at > NOW() - INTERVAL '30 days') as month_failed,
+        
         -- Revenue calculations (use COALESCE to fall back to updated_at if delivered_at is NULL)
         COALESCE(SUM(s.price_cents) FILTER (WHERE s.status = 'DELIVERED'), 0) / 100.0 as total_revenue,
         COALESCE(SUM(s.price_cents) FILTER (WHERE s.status = 'DELIVERED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days'), 0) / 100.0 as week_revenue,
+        COALESCE(SUM(s.price_cents) FILTER (WHERE s.status = 'DELIVERED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '30 days'), 0) / 100.0 as month_revenue,
         
         -- Activity tracking (use COALESCE to handle NULL from LEFT JOIN for drivers with no shipments)
         MAX(COALESCE(GREATEST(s.delivered_at, dp.account_updated_at), dp.account_updated_at)) as last_active,
         
-        -- Success rate calculation
+        -- All-time success rate calculation
         CASE 
           WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED')) > 0
           THEN (COUNT(*) FILTER (WHERE s.status = 'DELIVERED')::float / 
@@ -334,13 +348,45 @@ async function handleRefreshDriverStats(env) {
           ELSE NULL
         END as success_rate,
         
-        -- Cancellation rate
+        -- All-time cancellation rate
         CASE 
           WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED')) > 0
           THEN (COUNT(*) FILTER (WHERE s.status = 'CANCELLED')::float / 
                 COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED'))::float * 100)
           ELSE NULL
         END as cancel_rate,
+        
+        -- Weekly success rate (last 7 days)
+        CASE 
+          WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED') AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days') > 0
+          THEN (COUNT(*) FILTER (WHERE s.status = 'DELIVERED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days')::float / 
+                COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED') AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days')::float * 100)
+          ELSE NULL
+        END as week_success_rate,
+        
+        -- Weekly cancellation rate
+        CASE 
+          WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED') AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days') > 0
+          THEN (COUNT(*) FILTER (WHERE s.status = 'CANCELLED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days')::float / 
+                COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED') AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days')::float * 100)
+          ELSE NULL
+        END as week_cancel_rate,
+        
+        -- Monthly success rate (last 30 days)
+        CASE 
+          WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED') AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '30 days') > 0
+          THEN (COUNT(*) FILTER (WHERE s.status = 'DELIVERED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '30 days')::float / 
+                COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED') AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '30 days')::float * 100)
+          ELSE NULL
+        END as month_success_rate,
+        
+        -- Monthly cancellation rate
+        CASE 
+          WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED') AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '30 days') > 0
+          THEN (COUNT(*) FILTER (WHERE s.status = 'CANCELLED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '30 days')::float / 
+                COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED') AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '30 days')::float * 100)
+          ELSE NULL
+        END as month_cancel_rate,
         
         -- Average rating (ratings column doesn't exist in shipments table)
         0 as avg_rating,
@@ -1258,11 +1304,18 @@ function serveDriverStats(pin) {
               total_failed,
               week_completed,
               week_failed,
+              month_completed,
+              month_failed,
               total_revenue,
               week_revenue,
+              month_revenue,
               last_active,
               success_rate,
               cancel_rate,
+              week_success_rate,
+              week_cancel_rate,
+              month_success_rate,
+              month_cancel_rate,
               avg_rating,
               rating_count,
               stats_updated_at
@@ -1516,17 +1569,38 @@ function serveDriverStats(pin) {
             </div>
             
             <!-- Revenue Stats -->
-            <div class="grid grid-cols-2 gap-3 mb-4">
+            <div class="grid grid-cols-3 gap-3 mb-4">
               <div class="bg-slate-900/50 rounded-lg p-3 border border-slate-700">
                 <div class="text-xs text-slate-400 mb-1">Total Revenue</div>
-                <div class="text-2xl font-bold text-emerald-400">$\${(parseFloat(driver.total_revenue) || 0).toFixed(2)}</div>
+                <div class="text-xl font-bold text-emerald-400">$\${(parseFloat(driver.total_revenue) || 0).toFixed(2)}</div>
                 <div class="text-xs text-slate-500">All-time</div>
               </div>
               
               <div class="bg-slate-900/50 rounded-lg p-3 border border-slate-700">
+                <div class="text-xs text-slate-400 mb-1">30-Day Revenue</div>
+                <div class="text-xl font-bold text-emerald-400">$\${(parseFloat(driver.month_revenue) || 0).toFixed(2)}</div>
+                <div class="text-xs text-slate-500">\${driver.month_completed || 0} deliveries</div>
+              </div>
+              
+              <div class="bg-slate-900/50 rounded-lg p-3 border border-slate-700">
                 <div class="text-xs text-slate-400 mb-1">Weekly Revenue</div>
-                <div class="text-2xl font-bold text-emerald-400">$\${(parseFloat(driver.week_revenue) || 0).toFixed(2)}</div>
-                <div class="text-xs text-slate-500">\${weekCompleted} deliveries this week</div>
+                <div class="text-xl font-bold text-emerald-400">$\${(parseFloat(driver.week_revenue) || 0).toFixed(2)}</div>
+                <div class="text-xs text-slate-500">\${weekCompleted} deliveries</div>
+              </div>
+            </div>
+            
+            <!-- 30-Day Performance Metrics -->
+            <div class="grid grid-cols-2 gap-3 mb-4">
+              <div class="bg-slate-900/50 rounded-lg p-3 border border-slate-700">
+                <div class="text-xs text-slate-400 mb-1">30-Day Success Rate</div>
+                <div class="text-2xl font-bold \${driver.month_success_rate !== null && driver.month_success_rate !== undefined ? (parseFloat(driver.month_success_rate) >= 90 ? 'text-green-400' : parseFloat(driver.month_success_rate) < 70 ? 'text-red-400' : 'text-yellow-400') : 'text-slate-500'}">\${driver.month_success_rate !== null && driver.month_success_rate !== undefined ? parseFloat(driver.month_success_rate).toFixed(1) + '%' : 'N/A'}</div>
+                <div class="text-xs text-slate-500">\${driver.month_completed || 0} completed / \${driver.month_failed || 0} failed</div>
+              </div>
+              
+              <div class="bg-slate-900/50 rounded-lg p-3 border border-slate-700">
+                <div class="text-xs text-slate-400 mb-1">Weekly Success Rate</div>
+                <div class="text-2xl font-bold \${driver.week_success_rate !== null && driver.week_success_rate !== undefined ? (parseFloat(driver.week_success_rate) >= 90 ? 'text-green-400' : parseFloat(driver.week_success_rate) < 70 ? 'text-red-400' : 'text-yellow-400') : 'text-slate-500'}">\${driver.week_success_rate !== null && driver.week_success_rate !== undefined ? parseFloat(driver.week_success_rate).toFixed(1) + '%' : 'N/A'}</div>
+                <div class="text-xs text-slate-500">\${weekCompleted} completed / \${driver.week_failed || 0} failed</div>
               </div>
             </div>
             
