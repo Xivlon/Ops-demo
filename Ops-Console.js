@@ -242,7 +242,6 @@ async function handleRefreshDriverStats(env) {
           last_name VARCHAR(255),
           email VARCHAR(255),
           is_online BOOLEAN,
-          profile_photo_url TEXT,
           driver_joined TIMESTAMP,
           total_assigned INTEGER DEFAULT 0,
           pending_count INTEGER DEFAULT 0,
@@ -289,7 +288,7 @@ async function handleRefreshDriverStats(env) {
 
     await sql`
       INSERT INTO driver_stats (
-        id, first_name, last_name, email, is_online, profile_photo_url, driver_joined,
+        id, first_name, last_name, email, is_online, driver_joined,
         total_assigned, pending_count, assigned_count, in_transit_count, total_completed,
         cancelled_count, failed_count, total_failed, week_completed, week_failed,
         total_revenue, week_revenue, last_active, success_rate, cancel_rate,
@@ -301,7 +300,6 @@ async function handleRefreshDriverStats(env) {
         dp.last_name,
         dp.email,
         dp.is_online,
-        NULL as profile_photo_url, -- Column doesn't exist in schema
         dp.account_created_at as driver_joined,
         
         -- Total shipments assigned to this driver
@@ -314,12 +312,12 @@ async function handleRefreshDriverStats(env) {
         COUNT(*) FILTER (WHERE s.status = 'PICKED_UP') as in_transit_count,
         COUNT(*) FILTER (WHERE s.status = 'DELIVERED') as total_completed,
         COUNT(*) FILTER (WHERE s.status = 'CANCELLED') as cancelled_count,
-        COUNT(*) FILTER (WHERE s.status = 'FAILED') as failed_count,
-        COUNT(*) FILTER (WHERE s.status IN ('CANCELLED', 'FAILED')) as total_failed,
+        0 as failed_count,
+        COUNT(*) FILTER (WHERE s.status = 'CANCELLED') as total_failed,
         
         -- Weekly stats
         COUNT(*) FILTER (WHERE s.status = 'DELIVERED' AND s.delivered_at > NOW() - INTERVAL '7 days') as week_completed,
-        COUNT(*) FILTER (WHERE s.status IN ('CANCELLED', 'FAILED') AND s.updated_at > NOW() - INTERVAL '7 days') as week_failed,
+        COUNT(*) FILTER (WHERE s.status = 'CANCELLED' AND s.updated_at > NOW() - INTERVAL '7 days') as week_failed,
         
         -- Revenue calculations
         COALESCE(SUM(s.price_cents) FILTER (WHERE s.status = 'DELIVERED'), 0) / 100.0 as total_revenue,
@@ -330,17 +328,17 @@ async function handleRefreshDriverStats(env) {
         
         -- Success rate calculation
         CASE 
-          WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED', 'FAILED')) > 0
+          WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED')) > 0
           THEN (COUNT(*) FILTER (WHERE s.status = 'DELIVERED')::float / 
-                COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED', 'FAILED'))::float * 100)
+                COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED'))::float * 100)
           ELSE NULL
         END as success_rate,
         
         -- Cancellation rate
         CASE 
-          WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED', 'FAILED')) > 0
+          WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED')) > 0
           THEN (COUNT(*) FILTER (WHERE s.status = 'CANCELLED')::float / 
-                COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED', 'FAILED'))::float * 100)
+                COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED'))::float * 100)
           ELSE NULL
         END as cancel_rate,
         
