@@ -1081,12 +1081,222 @@ function serveDashboard(pin) {
     } 
   });
 }
-
 function serveDriverStats(pin) {
-  return new Response("Driver Stats page - Coming soon!", { 
+  return new Response(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Driver Performance</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            slate: {
+              50: '#f8fafc', 100: '#f1f5f9', 200: '#e2e8f0', 300: '#cbd5e1',
+              400: '#94a3b8', 500: '#64748b', 600: '#475569', 700: '#334155',
+              800: '#1e293b', 900: '#0f172a', 950: '#020617',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    body { font-family: sans-serif; }
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    .driver-card { transition: all 0.3s ease; }
+    .driver-card:hover { transform: translateY(-2px); }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen">
+  
+  <nav class="bg-slate-800 border-b border-slate-700 px-6 py-4 sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto flex justify-between items-center">
+      <div class="flex items-center gap-3">
+        <div class="bg-purple-600 p-2.5 rounded-lg">
+          <i data-lucide="users" class="w-7 h-7"></i>
+        </div>
+        <div>
+          <h1 class="text-xl font-bold">Driver Performance</h1>
+          <div class="flex items-center gap-2">
+            <span id="status-indicator" class="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></span>
+            <p id="status-text" class="text-xs text-slate-400">Loading...</p>
+          </div>
+        </div>
+      </div>
+      <div class="flex gap-3">
+        <button id="btn-cached" onclick="setDataSource('cached')" class="bg-purple-700 px-3 py-2 rounded text-sm">Cached</button>
+        <button id="btn-live" onclick="setDataSource('live')" class="bg-slate-700 px-3 py-2 rounded text-sm">Live</button>
+        <button onclick="window.location.href='/?pin=${pin}'" class="bg-slate-700 px-4 py-2 rounded text-sm">Back</button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="max-w-7xl mx-auto p-6 space-y-6">
+    <div id="toast-container" class="fixed top-24 right-6 z-50"></div>
+    
+    <div class="bg-slate-800 rounded p-4 border border-slate-700 flex gap-4">
+      <button onclick="refreshData()" class="bg-slate-700 px-4 py-2 rounded text-sm">Refresh</button>
+      <button onclick="recalculateStats()" class="bg-purple-700 px-4 py-2 rounded text-sm">Update Cache</button>
+    </div>
+
+    <div id="drivers-grid" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="bg-slate-800 h-96 rounded animate-pulse"></div>
+      <div class="bg-slate-800 h-96 rounded animate-pulse"></div>
+    </div>
+    
+    <div class="text-center text-slate-500 text-sm">
+      <span id="last-updated">Loading...</span>
+    </div>
+  </div>
+
+  <script>
+    lucide.createIcons();
+    
+    let allDrivers = [];
+    let currentDataSource = 'cached';
+    
+    function setDataSource(source) {
+      currentDataSource = source;
+      document.getElementById('btn-cached').className = source === 'cached' ? 'bg-purple-700 px-3 py-2 rounded text-sm' : 'bg-slate-700 px-3 py-2 rounded text-sm';
+      document.getElementById('btn-live').className = source === 'live' ? 'bg-emerald-700 px-3 py-2 rounded text-sm' : 'bg-slate-700 px-3 py-2 rounded text-sm';
+      refreshData();
+    }
+
+    async function refreshData() {
+      try {
+        await loadDriverStats();
+        document.getElementById('last-updated').innerText = 'Last updated: ' + new Date().toLocaleTimeString();
+      } catch (error) {
+        console.error('Error:', error);
+        showToast('Failed to load data', 'red');
+      }
+    }
+    
+    async function recalculateStats() {
+      try {
+        showToast("Updating cache...", "blue");
+        const res = await fetch('/api/refresh-driver-stats?pin=${pin}', { method: 'POST' });
+        const data = await res.json();
+        
+        if (data.success) {
+          showToast('Cache updated: ' + data.driversUpdated + ' drivers', "green");
+          currentDataSource = 'cached';
+          setDataSource('cached');
+        } else {
+          showToast("Failed to update cache", "red");
+        }
+      } catch (e) {
+        showToast("Failed to update cache", "red");
+      }
+    }
+
+    async function loadDriverStats() {
+      try {
+        let res;
+        
+        if (currentDataSource === 'live') {
+          res = await fetch('/api/live-driver-stats?pin=${pin}', { method: 'POST' });
+        } else {
+          res = await fetch('/api/driver-stats?pin=${pin}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: 'SELECT * FROM driver_stats ORDER BY total_completed DESC' })
+          });
+        }
+        
+        const data = await res.json();
+        allDrivers = data.rows || [];
+        
+        document.getElementById('status-indicator').className = "w-2 h-2 rounded-full bg-green-500";
+        document.getElementById('status-text').innerText = 'Connected - ' + allDrivers.length + ' drivers (' + currentDataSource + ')';
+        
+        renderDriverCards(allDrivers);
+        
+      } catch (e) { 
+        console.error("Error:", e);
+        document.getElementById('status-indicator').className = "w-2 h-2 rounded-full bg-red-500";
+        document.getElementById('status-text').innerText = "Error";
+        showToast("Failed to load data", "red");
+      }
+    }
+
+    function renderDriverCards(drivers) {
+      const grid = document.getElementById('drivers-grid');
+      
+      if (drivers.length === 0) {
+        grid.innerHTML = '<div class="col-span-full text-center text-slate-400 py-12">No drivers found</div>';
+        return;
+      }
+      
+      grid.innerHTML = drivers.map(driver => {
+        const name = (driver.first_name || '') + ' ' + (driver.last_name || '');
+        const initials = name.trim().split(' ').map(n => n[0] || '').join('').toUpperCase().slice(0, 2) || '??';
+        const successRate = driver.success_rate !== null ? parseFloat(driver.success_rate).toFixed(1) + '%' : 'N/A';
+        
+        return '<div class="driver-card bg-slate-800 rounded-xl p-6 border-2 border-slate-700">' +
+          '<div class="flex items-start gap-4 mb-4">' +
+            '<div class="w-16 h-16 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white font-bold text-xl">' +
+              initials +
+            '</div>' +
+            '<div class="flex-1">' +
+              '<h3 class="text-lg font-bold">' + name + '</h3>' +
+              '<p class="text-xs text-slate-400">' + (driver.email || 'No email') + '</p>' +
+              '<span class="text-xs text-' + (driver.is_online ? 'green' : 'slate') + '-400">' +
+                (driver.is_online ? 'Online' : 'Offline') +
+              '</span>' +
+            '</div>' +
+          '</div>' +
+          '<div class="grid grid-cols-2 gap-3">' +
+            '<div class="bg-slate-900/50 rounded-lg p-3">' +
+              '<div class="text-xs text-slate-400">Total Completed</div>' +
+              '<div class="text-2xl font-bold">' + (driver.total_completed || 0) + '</div>' +
+            '</div>' +
+            '<div class="bg-slate-900/50 rounded-lg p-3">' +
+              '<div class="text-xs text-slate-400">Success Rate</div>' +
+              '<div class="text-2xl font-bold text-green-400">' + successRate + '</div>' +
+            '</div>' +
+            '<div class="bg-slate-900/50 rounded-lg p-3">' +
+              '<div class="text-xs text-slate-400">Total Revenue</div>' +
+              '<div class="text-xl font-bold text-emerald-400">$' + (parseFloat(driver.total_revenue) || 0).toFixed(2) + '</div>' +
+            '</div>' +
+            '<div class="bg-slate-900/50 rounded-lg p-3">' +
+              '<div class="text-xs text-slate-400">Week Completed</div>' +
+              '<div class="text-xl font-bold">' + (driver.week_completed || 0) + '</div>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+      
+      lucide.createIcons();
+    }
+
+    function showToast(msg, color) {
+      const container = document.getElementById('toast-container');
+      const div = document.createElement('div');
+      const bg = color === 'green' ? 'bg-green-600' : color === 'blue' ? 'bg-blue-600' : 'bg-red-600';
+      div.className = bg + " text-white px-4 py-2 rounded shadow-lg mb-2 text-sm font-bold";
+      div.innerText = msg;
+      container.appendChild(div);
+      setTimeout(() => div.remove(), 3000);
+    }
+
+    refreshData();
+  </script>
+</body>
+</html>`, { 
     headers: { 
       "Content-Type": "text/html",
       "X-Content-Type-Options": "nosniff"
     } 
+  });
+} 
   });
 }
