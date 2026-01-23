@@ -307,7 +307,7 @@ async function handleLiveDriverStats(env) {
         
         CASE 
           WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED') AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days') > 0
-          THEN (COUNT(*) FILTER (WHERE s.status = 'CANCELLED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days')::float / 
+          THEN (COUNT(*) FILTER (WHERE s.status = 'CANCELLED' AND s.updated_at > NOW() - INTERVAL '7 days')::float / 
                 COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED') AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days')::float * 100)
           ELSE NULL
         END as week_cancel_rate,
@@ -536,7 +536,7 @@ async function handleRefreshDriverStats(env) {
           
           CASE 
             WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED') AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days') > 0
-            THEN (COUNT(*) FILTER (WHERE s.status = 'CANCELLED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days')::float / 
+            THEN (COUNT(*) FILTER (WHERE s.status = 'CANCELLED' AND s.updated_at > NOW() - INTERVAL '7 days')::float / 
                   COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED') AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days')::float * 100)
             ELSE NULL
           END as week_cancel_rate,
@@ -1311,7 +1311,7 @@ function serveDriverStats(pin) {
         btnLive.className = 'flex items-center gap-1.5 bg-transparent px-3 py-2 rounded text-sm font-medium text-slate-400 hover:text-white';
       } else {
         btnCached.className = 'flex items-center gap-1.5 bg-transparent px-3 py-2 rounded text-sm font-medium text-slate-400 hover:text-white';
-        btnLive.className = 'flex items-center gap-1.5 bg-emerald-600 px-3 py-2 rounded text-sm font-medium';
+        btnLive.className = 'flex items-center gap-1.5 bg-emerald-700 px-3 py-2 rounded text-sm font-medium';
       }
       
       lucide.createIcons();
