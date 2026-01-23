@@ -1297,6 +1297,4 @@ function serveDriverStats(pin) {
       "X-Content-Type-Options": "nosniff"
     } 
   });
-} 
-  });
 }
