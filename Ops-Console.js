@@ -1364,13 +1364,13 @@ function serveDriverStats(pin) {
         
         // Handle NULL success_rate (no shipments)
         const successRate = driver.success_rate !== null && driver.success_rate !== undefined 
-          ? driver.success_rate 
+          ? parseFloat(driver.success_rate)
           : null;
         const cancelRate = driver.cancel_rate !== null && driver.cancel_rate !== undefined 
-          ? driver.cancel_rate 
+          ? parseFloat(driver.cancel_rate)
           : null;
-        const weekCompleted = driver.week_completed || 0;
-        const totalAssigned = driver.total_assigned || 0;
+        const weekCompleted = parseInt(driver.week_completed) || 0;
+        const totalAssigned = parseInt(driver.total_assigned) || 0;
         
         // Fixed performance classification with clear, non-overlapping conditions
         let performanceClass = 'performance-average';
@@ -1390,7 +1390,7 @@ function serveDriverStats(pin) {
           performanceBadge = '<span class="text-xs bg-red-500/20 text-red-400 px-2 py-1 rounded">Needs Attention</span>';
         }
         
-        const rating = driver.avg_rating || 0;
+        const rating = parseFloat(driver.avg_rating) || 0;
         const ratingCount = driver.rating_count || 0;
         const stars = '★'.repeat(Math.round(rating)) + '☆'.repeat(5 - Math.round(rating));
         
@@ -1472,13 +1472,13 @@ function serveDriverStats(pin) {
             <div class="grid grid-cols-2 gap-3 mb-4">
               <div class="bg-slate-900/50 rounded-lg p-3 border border-slate-700">
                 <div class="text-xs text-slate-400 mb-1">Total Revenue</div>
-                <div class="text-2xl font-bold text-emerald-400">$\${(driver.total_revenue || 0).toFixed(2)}</div>
+                <div class="text-2xl font-bold text-emerald-400">$\${(parseFloat(driver.total_revenue) || 0).toFixed(2)}</div>
                 <div class="text-xs text-slate-500">All-time</div>
               </div>
               
               <div class="bg-slate-900/50 rounded-lg p-3 border border-slate-700">
                 <div class="text-xs text-slate-400 mb-1">Weekly Revenue</div>
-                <div class="text-2xl font-bold text-emerald-400">$\${(driver.week_revenue || 0).toFixed(2)}</div>
+                <div class="text-2xl font-bold text-emerald-400">$\${(parseFloat(driver.week_revenue) || 0).toFixed(2)}</div>
                 <div class="text-xs text-slate-500">\${weekCompleted} deliveries this week</div>
               </div>
             </div>
