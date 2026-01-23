@@ -1305,13 +1305,52 @@ function serveDriverStats(pin) {
       
       const perfFilter = document.getElementById('filterPerformance').value;
       if (perfFilter === 'high') {
-        filtered = filtered.filter(d => d.success_rate >= 90 && d.week_completed >= 20);
+        // High performers: must have data AND meet both thresholds
+        filtered = filtered.filter(d => 
+          d.success_rate !== null && 
+          d.success_rate !== undefined && 
+          d.success_rate >= 90 && 
+          (parseInt(d.week_completed, 10) || 0) >= 20
+        );
       } else if (perfFilter === 'attention') {
-        filtered = filtered.filter(d => d.success_rate < 70 || d.week_completed < 5);
+        // Needs attention: no data OR poor success rate OR low activity
+        filtered = filtered.filter(d => {
+          const successRate = d.success_rate;
+          const weekCompleted = parseInt(d.week_completed, 10) || 0;
+          // Include drivers with no data, low success rate, or low activity
+          return successRate === null || 
+                 successRate === undefined || 
+                 successRate < 70 || 
+                 weekCompleted < 5;
+        });
       }
       
       // Apply sort
       const sortBy = document.getElementById('sortBy').value;
+      
+      // Helper function to handle NULL values in sorting
+      // NULL values are sorted to the end regardless of sort direction
+      const compareWithNulls = (aVal, bVal, descending) => {
+        const aIsNull = aVal === null || aVal === undefined;
+        const bIsNull = bVal === null || bVal === undefined;
+        if (aIsNull && bIsNull) return 0;
+        if (aIsNull) return 1;  // a goes to end
+        if (bIsNull) return -1; // b goes to end
+        return descending ? bVal - aVal : aVal - bVal;
+      };
+      
+      // Helper function for date comparison with NULL handling
+      const compareDatesWithNulls = (aVal, bVal, descending) => {
+        const aIsNull = !aVal;
+        const bIsNull = !bVal;
+        if (aIsNull && bIsNull) return 0;
+        if (aIsNull) return 1;  // a goes to end
+        if (bIsNull) return -1; // b goes to end
+        const aDate = new Date(aVal);
+        const bDate = new Date(bVal);
+        return descending ? bDate - aDate : aDate - bDate;
+      };
+      
       filtered.sort((a, b) => {
         switch(sortBy) {
           case 'deliveries-desc': return (b.total_completed || 0) - (a.total_completed || 0);
@@ -1322,14 +1361,12 @@ function serveDriverStats(pin) {
           case 'revenue-asc': return (a.total_revenue || 0) - (b.total_revenue || 0);
           case 'rating-desc': return (b.avg_rating || 0) - (a.avg_rating || 0);
           case 'rating-asc': return (a.avg_rating || 0) - (b.avg_rating || 0);
-          case 'success-desc': return (b.success_rate || 0) - (a.success_rate || 0);
-          case 'success-asc': return (a.success_rate || 0) - (b.success_rate || 0);
-          case 'cancel-desc': return (b.cancel_rate || 0) - (a.cancel_rate || 0);
-          case 'cancel-asc': return (a.cancel_rate || 0) - (b.cancel_rate || 0);
-          case 'active-recent': 
-            return new Date(b.last_active || 0) - new Date(a.last_active || 0);
-          case 'active-oldest': 
-            return new Date(a.last_active || 0) - new Date(b.last_active || 0);
+          case 'success-desc': return compareWithNulls(a.success_rate, b.success_rate, true);
+          case 'success-asc': return compareWithNulls(a.success_rate, b.success_rate, false);
+          case 'cancel-desc': return compareWithNulls(a.cancel_rate, b.cancel_rate, true);
+          case 'cancel-asc': return compareWithNulls(a.cancel_rate, b.cancel_rate, false);
+          case 'active-recent': return compareDatesWithNulls(a.last_active, b.last_active, true);
+          case 'active-oldest': return compareDatesWithNulls(a.last_active, b.last_active, false);
           default: return 0;
         }
       });
