@@ -393,6 +393,7 @@ async function handleRefreshDriverStats(env) {
 
     const sql = neon(connectionString);
 
+    // Step 1: Create table if not exists
     try {
       await sql`
         CREATE TABLE IF NOT EXISTS driver_stats (
@@ -429,12 +430,14 @@ async function handleRefreshDriverStats(env) {
           stats_updated_at TIMESTAMP DEFAULT NOW()
         )
       `;
+      console.log('✓ Driver stats table created/verified');
     } catch (tableError) {
       console.error('Error creating driver_stats table:', tableError);
       return new Response(
         JSON.stringify({ 
-          error: `Failed to initialize driver stats database.`,
-          code: "TABLE_CREATION_ERROR"
+          error: `Failed to initialize driver stats table: ${tableError.message}`,
+          code: "TABLE_CREATION_ERROR",
+          details: tableError.message
         }),
         { 
           status: 500, 
@@ -446,103 +449,145 @@ async function handleRefreshDriverStats(env) {
       );
     }
 
-    await sql`TRUNCATE TABLE driver_stats`;
+    // Step 2: Clear existing data
+    try {
+      await sql`TRUNCATE TABLE driver_stats`;
+      console.log('✓ Driver stats table truncated');
+    } catch (truncateError) {
+      console.error('Error truncating driver_stats table:', truncateError);
+      return new Response(
+        JSON.stringify({ 
+          error: `Failed to truncate driver stats table: ${truncateError.message}`,
+          code: "TRUNCATE_ERROR",
+          details: truncateError.message
+        }),
+        { 
+          status: 500, 
+          headers: { 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          } 
+        }
+      );
+    }
 
-    await sql`
-      INSERT INTO driver_stats (
-        id, first_name, last_name, email, is_online, driver_joined,
-        total_assigned, pending_count, assigned_count, in_transit_count, total_completed,
-        cancelled_count, failed_count, total_failed, week_completed, week_failed,
-        month_completed, month_failed, total_revenue, week_revenue, month_revenue,
-        last_active, success_rate, cancel_rate,
-        week_success_rate, week_cancel_rate, month_success_rate, month_cancel_rate,
-        avg_rating, rating_count, stats_updated_at
-      )
-      SELECT 
-        dp.id,
-        dp.first_name,
-        dp.last_name,
-        dp.email,
-        dp.is_online,
-        dp.account_created_at as driver_joined,
-        
-        COUNT(s.id) as total_assigned,
-        
-        COUNT(*) FILTER (WHERE s.status = 'PENDING') as pending_count,
-        COUNT(*) FILTER (WHERE s.status = 'ASSIGNED') as assigned_count,
-        COUNT(*) FILTER (WHERE s.status = 'PICKED_UP') as in_transit_count,
-        COUNT(*) FILTER (WHERE s.status = 'DELIVERED') as total_completed,
-        COUNT(*) FILTER (WHERE s.status = 'CANCELLED') as cancelled_count,
-        0 as failed_count,
-        COUNT(*) FILTER (WHERE s.status = 'CANCELLED') as total_failed,
-        
-        COUNT(*) FILTER (WHERE s.status = 'DELIVERED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days') as week_completed,
-        COUNT(*) FILTER (WHERE s.status = 'CANCELLED' AND s.updated_at > NOW() - INTERVAL '7 days') as week_failed,
-        
-        COUNT(*) FILTER (WHERE s.status = 'DELIVERED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '30 days') as month_completed,
-        COUNT(*) FILTER (WHERE s.status = 'CANCELLED' AND s.updated_at > NOW() - INTERVAL '30 days') as month_failed,
-        
-        COALESCE(SUM(s.price_cents) FILTER (WHERE s.status = 'DELIVERED'), 0) / 100.0 as total_revenue,
-        COALESCE(SUM(s.price_cents) FILTER (WHERE s.status = 'DELIVERED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days'), 0) / 100.0 as week_revenue,
-        COALESCE(SUM(s.price_cents) FILTER (WHERE s.status = 'DELIVERED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '30 days'), 0) / 100.0 as month_revenue,
-        
-        MAX(COALESCE(GREATEST(s.delivered_at, dp.account_updated_at), dp.account_updated_at)) as last_active,
-        
-        CASE 
-          WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED')) > 0
-          THEN (COUNT(*) FILTER (WHERE s.status = 'DELIVERED')::float / 
-                COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED'))::float * 100)
-          ELSE NULL
-        END as success_rate,
-        
-        CASE 
-          WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED')) > 0
-          THEN (COUNT(*) FILTER (WHERE s.status = 'CANCELLED')::float / 
-                COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED'))::float * 100)
-          ELSE NULL
-        END as cancel_rate,
-        
-        CASE 
-          WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED') AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days') > 0
-          THEN (COUNT(*) FILTER (WHERE s.status = 'DELIVERED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days')::float / 
-                COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED') AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days')::float * 100)
-          ELSE NULL
-        END as week_success_rate,
-        
-        CASE 
-          WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED') AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days') > 0
-          THEN (COUNT(*) FILTER (WHERE s.status = 'CANCELLED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days')::float / 
-                COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED') AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days')::float * 100)
-          ELSE NULL
-        END as week_cancel_rate,
-        
-        CASE 
-          WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED') AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '30 days') > 0
-          THEN (COUNT(*) FILTER (WHERE s.status = 'DELIVERED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '30 days')::float / 
-                COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED') AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '30 days')::float * 100)
-          ELSE NULL
-        END as month_success_rate,
-        
-        CASE 
-          WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED') AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '30 days') > 0
-          THEN (COUNT(*) FILTER (WHERE s.status = 'CANCELLED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '30 days')::float / 
-                COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED') AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '30 days')::float * 100)
-          ELSE NULL
-        END as month_cancel_rate,
-        
-        0 as avg_rating,
-        0 as rating_count,
-        
-        NOW() as stats_updated_at
+    // Step 3: Insert fresh data
+    try {
+      const insertResult = await sql`
+        INSERT INTO driver_stats (
+          id, first_name, last_name, email, is_online, driver_joined,
+          total_assigned, pending_count, assigned_count, in_transit_count, total_completed,
+          cancelled_count, failed_count, total_failed, week_completed, week_failed,
+          month_completed, month_failed, total_revenue, week_revenue, month_revenue,
+          last_active, success_rate, cancel_rate,
+          week_success_rate, week_cancel_rate, month_success_rate, month_cancel_rate,
+          avg_rating, rating_count, stats_updated_at
+        )
+        SELECT 
+          dp.id,
+          dp.first_name,
+          dp.last_name,
+          dp.email,
+          dp.is_online,
+          dp.account_created_at as driver_joined,
+          
+          COUNT(s.id) as total_assigned,
+          
+          COUNT(*) FILTER (WHERE s.status = 'PENDING') as pending_count,
+          COUNT(*) FILTER (WHERE s.status = 'ASSIGNED') as assigned_count,
+          COUNT(*) FILTER (WHERE s.status = 'PICKED_UP') as in_transit_count,
+          COUNT(*) FILTER (WHERE s.status = 'DELIVERED') as total_completed,
+          COUNT(*) FILTER (WHERE s.status = 'CANCELLED') as cancelled_count,
+          0 as failed_count,
+          COUNT(*) FILTER (WHERE s.status = 'CANCELLED') as total_failed,
+          
+          COUNT(*) FILTER (WHERE s.status = 'DELIVERED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days') as week_completed,
+          COUNT(*) FILTER (WHERE s.status = 'CANCELLED' AND s.updated_at > NOW() - INTERVAL '7 days') as week_failed,
+          
+          COUNT(*) FILTER (WHERE s.status = 'DELIVERED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '30 days') as month_completed,
+          COUNT(*) FILTER (WHERE s.status = 'CANCELLED' AND s.updated_at > NOW() - INTERVAL '30 days') as month_failed,
+          
+          COALESCE(SUM(s.price_cents) FILTER (WHERE s.status = 'DELIVERED'), 0) / 100.0 as total_revenue,
+          COALESCE(SUM(s.price_cents) FILTER (WHERE s.status = 'DELIVERED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days'), 0) / 100.0 as week_revenue,
+          COALESCE(SUM(s.price_cents) FILTER (WHERE s.status = 'DELIVERED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '30 days'), 0) / 100.0 as month_revenue,
+          
+          MAX(COALESCE(GREATEST(s.delivered_at, dp.account_updated_at), dp.account_updated_at)) as last_active,
+          
+          CASE 
+            WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED')) > 0
+            THEN (COUNT(*) FILTER (WHERE s.status = 'DELIVERED')::float / 
+                  COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED'))::float * 100)
+            ELSE NULL
+          END as success_rate,
+          
+          CASE 
+            WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED')) > 0
+            THEN (COUNT(*) FILTER (WHERE s.status = 'CANCELLED')::float / 
+                  COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED'))::float * 100)
+            ELSE NULL
+          END as cancel_rate,
+          
+          CASE 
+            WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED') AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days') > 0
+            THEN (COUNT(*) FILTER (WHERE s.status = 'DELIVERED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days')::float / 
+                  COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED') AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days')::float * 100)
+            ELSE NULL
+          END as week_success_rate,
+          
+          CASE 
+            WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED') AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days') > 0
+            THEN (COUNT(*) FILTER (WHERE s.status = 'CANCELLED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days')::float / 
+                  COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED') AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days')::float * 100)
+            ELSE NULL
+          END as week_cancel_rate,
+          
+          CASE 
+            WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED') AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '30 days') > 0
+            THEN (COUNT(*) FILTER (WHERE s.status = 'DELIVERED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '30 days')::float / 
+                  COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED') AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '30 days')::float * 100)
+            ELSE NULL
+          END as month_success_rate,
+          
+          CASE 
+            WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED') AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '30 days') > 0
+            THEN (COUNT(*) FILTER (WHERE s.status = 'CANCELLED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '30 days')::float / 
+                  COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED') AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '30 days')::float * 100)
+            ELSE NULL
+          END as month_cancel_rate,
+          
+          0 as avg_rating,
+          0 as rating_count,
+          
+          NOW() as stats_updated_at
 
-      FROM driver_profiles dp
-      LEFT JOIN shipments s ON s.driver_id = dp.id
-      WHERE dp.user_type = 'driver'
-      GROUP BY dp.id, dp.first_name, dp.last_name, dp.email, dp.is_online, dp.account_created_at
-    `;
+        FROM driver_profiles dp
+        LEFT JOIN shipments s ON s.driver_id = dp.id
+        WHERE dp.user_type = 'driver'
+        GROUP BY dp.id, dp.first_name, dp.last_name, dp.email, dp.is_online, dp.account_created_at
+      `;
+      console.log('✓ Driver stats data inserted, rows affected:', insertResult.length || insertResult.count || 0);
+    } catch (insertError) {
+      console.error('Error inserting into driver_stats table:', insertError);
+      return new Response(
+        JSON.stringify({ 
+          error: `Failed to insert driver stats: ${insertError.message}`,
+          code: "INSERT_ERROR",
+          details: insertError.message
+        }),
+        { 
+          status: 500, 
+          headers: { 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          } 
+        }
+      );
+    }
 
+    // Step 4: Verify the data was inserted
     const countResult = await sql`SELECT COUNT(*) as count FROM driver_stats`;
     const driverCount = countResult[0]?.count || 0;
+    console.log('✓ Driver stats refresh complete, total drivers:', driverCount);
 
     return new Response(
       JSON.stringify({ 
@@ -564,7 +609,8 @@ async function handleRefreshDriverStats(env) {
     return new Response(
       JSON.stringify({ 
         error: error.message,
-        code: "STATS_REFRESH_ERROR"
+        code: "STATS_REFRESH_ERROR",
+        details: error.stack
       }),
       { 
         status: 500, 
