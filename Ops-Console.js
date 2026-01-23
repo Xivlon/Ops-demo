@@ -51,7 +51,22 @@ export default {
           }
         });
       }
-      return await handleNeonQuery(request, env);
+      
+      // Check if mode is specified in request body
+      const body = await request.json();
+      const { mode = 'cached' } = body;
+      
+      if (mode === 'live') {
+        return await handleLiveDriverStats(env);
+      } else {
+        // Create a new request with the original body for handleNeonQuery
+        const newRequest = new Request(request.url, {
+          method: 'POST',
+          headers: request.headers,
+          body: JSON.stringify(body)
+        });
+        return await handleNeonQuery(newRequest, env);
+      }
     }
 
     if (path.startsWith("/api/driver-timeline/") && request.method === "POST") {
@@ -1113,6 +1128,8 @@ function serveDriverStats(pin) {
     ::-webkit-scrollbar-thumb:hover { background: #475569; }
     .driver-card { transition: all 0.3s ease; }
     .driver-card:hover { transform: translateY(-2px); }
+    .data-source-cached { border-left-color: #8b5cf6; border-left-width: 4px; }
+    .data-source-live { border-left-color: #10b981; border-left-width: 4px; }
   </style>
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen">
@@ -1131,10 +1148,18 @@ function serveDriverStats(pin) {
           </div>
         </div>
       </div>
-      <div class="flex gap-3">
-        <button id="btn-cached" onclick="setDataSource('cached')" class="bg-purple-700 px-3 py-2 rounded text-sm">Cached</button>
-        <button id="btn-live" onclick="setDataSource('live')" class="bg-slate-700 px-3 py-2 rounded text-sm">Live</button>
-        <button onclick="window.location.href='/?pin=${pin}'" class="bg-slate-700 px-4 py-2 rounded text-sm">Back</button>
+      <div class="flex gap-3 items-center">
+        <div class="flex items-center gap-2 bg-slate-900 rounded-lg border border-slate-600 p-1">
+          <button id="btn-cached" onclick="setDataSource('cached')" class="flex items-center gap-1.5 bg-purple-700 px-3 py-2 rounded text-sm font-medium">
+            <i data-lucide="database" class="w-4 h-4"></i>
+            Cached
+          </button>
+          <button id="btn-live" onclick="setDataSource('live')" class="flex items-center gap-1.5 bg-transparent px-3 py-2 rounded text-sm font-medium text-slate-400 hover:text-white">
+            <i data-lucide="zap" class="w-4 h-4"></i>
+            Live
+          </button>
+        </div>
+        <button onclick="window.location.href='/?pin=${pin}'" class="bg-slate-700 px-4 py-2 rounded text-sm hover:bg-slate-600">Back</button>
       </div>
     </div>
   </nav>
@@ -1142,9 +1167,52 @@ function serveDriverStats(pin) {
   <div class="max-w-7xl mx-auto p-6 space-y-6">
     <div id="toast-container" class="fixed top-24 right-6 z-50"></div>
     
-    <div class="bg-slate-800 rounded p-4 border border-slate-700 flex gap-4">
-      <button onclick="refreshData()" class="bg-slate-700 px-4 py-2 rounded text-sm">Refresh</button>
-      <button onclick="recalculateStats()" class="bg-purple-700 px-4 py-2 rounded text-sm">Update Cache</button>
+    <div class="bg-slate-800 rounded-lg p-4 border border-slate-700 space-y-4">
+      <div class="flex flex-wrap gap-4 items-center">
+        <button onclick="refreshData()" class="flex items-center gap-2 bg-slate-700 px-4 py-2 rounded text-sm hover:bg-slate-600">
+          <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+          Refresh
+        </button>
+        <button onclick="recalculateStats()" class="flex items-center gap-2 bg-purple-700 px-4 py-2 rounded text-sm hover:bg-purple-600">
+          <i data-lucide="database" class="w-4 h-4"></i>
+          Update Cache
+        </button>
+        <button onclick="toggleAutoRefresh()" id="btn-auto-refresh" class="flex items-center gap-2 bg-emerald-700 px-4 py-2 rounded text-sm hover:bg-emerald-600">
+          <i data-lucide="play" class="w-4 h-4"></i>
+          Auto-Refresh: <span id="auto-refresh-status">On</span>
+        </button>
+        <div class="flex items-center gap-2 text-xs text-slate-400 ml-auto">
+          <i data-lucide="clock" class="w-4 h-4"></i>
+          <span id="cache-freshness">Cache age: calculating...</span>
+        </div>
+      </div>
+      
+      <div class="flex flex-wrap gap-4 items-center">
+        <div class="flex items-center gap-2">
+          <label class="text-sm text-slate-400">Sort by:</label>
+          <select id="sort-select" onchange="applySortAndFilter()" class="bg-slate-700 text-white px-3 py-2 rounded text-sm border border-slate-600 focus:outline-none focus:border-purple-500">
+            <option value="deliveries-desc">Most Deliveries</option>
+            <option value="deliveries-asc">Least Deliveries</option>
+            <option value="revenue-desc">Highest Revenue</option>
+            <option value="revenue-asc">Lowest Revenue</option>
+            <option value="success-desc">Highest Success Rate</option>
+            <option value="success-asc">Lowest Success Rate</option>
+            <option value="cancel-desc">Highest Cancel Rate</option>
+            <option value="cancel-asc">Lowest Cancel Rate</option>
+            <option value="active-recent">Most Recently Active</option>
+            <option value="active-oldest">Least Recently Active</option>
+          </select>
+        </div>
+        
+        <div class="flex items-center gap-2">
+          <label class="text-sm text-slate-400">Filter:</label>
+          <select id="filter-select" onchange="applySortAndFilter()" class="bg-slate-700 text-white px-3 py-2 rounded text-sm border border-slate-600 focus:outline-none focus:border-purple-500">
+            <option value="all">All Drivers</option>
+            <option value="high-performers">High Performers</option>
+            <option value="needs-attention">Needs Attention</option>
+          </select>
+        </div>
+      </div>
     </div>
 
     <div id="drivers-grid" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1162,12 +1230,86 @@ function serveDriverStats(pin) {
     
     let allDrivers = [];
     let currentDataSource = 'cached';
+    let dataFreshness = null;
+    let autoRefreshEnabled = true;
+    let autoRefreshInterval = null;
     
     function setDataSource(source) {
       currentDataSource = source;
-      document.getElementById('btn-cached').className = source === 'cached' ? 'bg-purple-700 px-3 py-2 rounded text-sm' : 'bg-slate-700 px-3 py-2 rounded text-sm';
-      document.getElementById('btn-live').className = source === 'live' ? 'bg-emerald-700 px-3 py-2 rounded text-sm' : 'bg-slate-700 px-3 py-2 rounded text-sm';
+      updateDataSourceUI();
       refreshData();
+    }
+    
+    function updateDataSourceUI() {
+      const btnCached = document.getElementById('btn-cached');
+      const btnLive = document.getElementById('btn-live');
+      
+      if (currentDataSource === 'cached') {
+        btnCached.className = 'flex items-center gap-1.5 bg-purple-700 px-3 py-2 rounded text-sm font-medium';
+        btnLive.className = 'flex items-center gap-1.5 bg-transparent px-3 py-2 rounded text-sm font-medium text-slate-400 hover:text-white';
+      } else {
+        btnCached.className = 'flex items-center gap-1.5 bg-transparent px-3 py-2 rounded text-sm font-medium text-slate-400 hover:text-white';
+        btnLive.className = 'flex items-center gap-1.5 bg-emerald-600 px-3 py-2 rounded text-sm font-medium';
+      }
+      
+      lucide.createIcons();
+    }
+    
+    function toggleAutoRefresh() {
+      autoRefreshEnabled = !autoRefreshEnabled;
+      const btn = document.getElementById('btn-auto-refresh');
+      const status = document.getElementById('auto-refresh-status');
+      
+      if (autoRefreshEnabled) {
+        btn.className = 'flex items-center gap-2 bg-emerald-700 px-4 py-2 rounded text-sm hover:bg-emerald-600';
+        status.innerText = 'On';
+        startAutoRefresh();
+      } else {
+        btn.className = 'flex items-center gap-2 bg-slate-700 px-4 py-2 rounded text-sm hover:bg-slate-600';
+        status.innerText = 'Off';
+        stopAutoRefresh();
+      }
+      
+      lucide.createIcons();
+    }
+    
+    function startAutoRefresh() {
+      if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+      autoRefreshInterval = setInterval(() => {
+        if (autoRefreshEnabled) {
+          refreshData();
+        }
+      }, 30000); // Refresh every 30 seconds
+    }
+    
+    function stopAutoRefresh() {
+      if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+        autoRefreshInterval = null;
+      }
+    }
+    
+    function updateCacheFreshness() {
+      if (!dataFreshness) return;
+      
+      const now = new Date();
+      const diff = now - dataFreshness;
+      const seconds = Math.floor(diff / 1000);
+      const minutes = Math.floor(seconds / 60);
+      const hours = Math.floor(minutes / 60);
+      
+      let freshnessText = '';
+      if (hours > 0) {
+        freshnessText = hours + 'h ' + (minutes % 60) + 'm ago';
+      } else if (minutes > 0) {
+        freshnessText = minutes + 'm ago';
+      } else {
+        freshnessText = seconds + 's ago';
+      }
+      
+      document.getElementById('cache-freshness').innerText = currentDataSource === 'cached' 
+        ? 'Cache age: ' + freshnessText
+        : 'Live data';
     }
 
     async function refreshData() {
@@ -1190,6 +1332,8 @@ function serveDriverStats(pin) {
           showToast('Cache updated: ' + data.driversUpdated + ' drivers', "green");
           currentDataSource = 'cached';
           setDataSource('cached');
+          dataFreshness = new Date();
+          updateCacheFreshness();
         } else {
           showToast("Failed to update cache", "red");
         }
@@ -1215,10 +1359,21 @@ function serveDriverStats(pin) {
         const data = await res.json();
         allDrivers = data.rows || [];
         
+        if (data.timestamp) {
+          dataFreshness = new Date(data.timestamp);
+        } else if (allDrivers.length > 0 && allDrivers[0].stats_updated_at) {
+          dataFreshness = new Date(allDrivers[0].stats_updated_at);
+        } else {
+          dataFreshness = new Date();
+        }
+        
+        updateCacheFreshness();
+        setInterval(updateCacheFreshness, 10000); // Update freshness every 10 seconds
+        
         document.getElementById('status-indicator').className = "w-2 h-2 rounded-full bg-green-500";
         document.getElementById('status-text').innerText = 'Connected - ' + allDrivers.length + ' drivers (' + currentDataSource + ')';
         
-        renderDriverCards(allDrivers);
+        applySortAndFilter();
         
       } catch (e) { 
         console.error("Error:", e);
@@ -1226,6 +1381,57 @@ function serveDriverStats(pin) {
         document.getElementById('status-text').innerText = "Error";
         showToast("Failed to load data", "red");
       }
+    }
+    
+    function applySortAndFilter() {
+      let filtered = [...allDrivers];
+      
+      // Apply filter
+      const filterValue = document.getElementById('filter-select').value;
+      if (filterValue === 'high-performers') {
+        filtered = filtered.filter(d => {
+          const successRate = parseFloat(d.success_rate) || 0;
+          const weekCompleted = parseInt(d.week_completed) || 0;
+          return successRate >= 90 && weekCompleted >= 20;
+        });
+      } else if (filterValue === 'needs-attention') {
+        filtered = filtered.filter(d => {
+          const successRate = parseFloat(d.success_rate);
+          const weekCompleted = parseInt(d.week_completed) || 0;
+          return successRate === null || successRate < 70 || weekCompleted < 5;
+        });
+      }
+      
+      // Apply sort
+      const sortValue = document.getElementById('sort-select').value;
+      filtered.sort((a, b) => {
+        switch(sortValue) {
+          case 'deliveries-desc':
+            return (b.total_completed || 0) - (a.total_completed || 0);
+          case 'deliveries-asc':
+            return (a.total_completed || 0) - (b.total_completed || 0);
+          case 'revenue-desc':
+            return (parseFloat(b.total_revenue) || 0) - (parseFloat(a.total_revenue) || 0);
+          case 'revenue-asc':
+            return (parseFloat(a.total_revenue) || 0) - (parseFloat(b.total_revenue) || 0);
+          case 'success-desc':
+            return (parseFloat(b.success_rate) || 0) - (parseFloat(a.success_rate) || 0);
+          case 'success-asc':
+            return (parseFloat(a.success_rate) || 0) - (parseFloat(b.success_rate) || 0);
+          case 'cancel-desc':
+            return (parseFloat(b.cancel_rate) || 0) - (parseFloat(a.cancel_rate) || 0);
+          case 'cancel-asc':
+            return (parseFloat(a.cancel_rate) || 0) - (parseFloat(b.cancel_rate) || 0);
+          case 'active-recent':
+            return new Date(b.last_active || 0) - new Date(a.last_active || 0);
+          case 'active-oldest':
+            return new Date(a.last_active || 0) - new Date(b.last_active || 0);
+          default:
+            return 0;
+        }
+      });
+      
+      renderDriverCards(filtered);
     }
 
     function renderDriverCards(drivers) {
@@ -1239,9 +1445,40 @@ function serveDriverStats(pin) {
       grid.innerHTML = drivers.map(driver => {
         const name = (driver.first_name || '') + ' ' + (driver.last_name || '');
         const initials = name.trim().split(' ').map(n => n[0] || '').join('').toUpperCase().slice(0, 2) || '??';
-        const successRate = driver.success_rate !== null ? parseFloat(driver.success_rate).toFixed(1) + '%' : 'N/A';
         
-        return '<div class="driver-card bg-slate-800 rounded-xl p-6 border-2 border-slate-700">' +
+        // Success rates with color coding
+        const successRate = driver.success_rate !== null ? parseFloat(driver.success_rate).toFixed(1) : null;
+        const successRateDisplay = successRate !== null ? successRate + '%' : 'N/A';
+        const successRateColor = successRate !== null && successRate >= 90 ? 'green' : 
+                                  successRate !== null && successRate >= 70 ? 'yellow' : 'red';
+        
+        const monthSuccessRate = driver.month_success_rate !== null ? parseFloat(driver.month_success_rate).toFixed(1) : null;
+        const monthSuccessRateDisplay = monthSuccessRate !== null ? monthSuccessRate + '%' : 'N/A';
+        const monthSuccessRateColor = monthSuccessRate !== null && monthSuccessRate >= 90 ? 'green' : 
+                                       monthSuccessRate !== null && monthSuccessRate >= 70 ? 'yellow' : 'red';
+        
+        const weekSuccessRate = driver.week_success_rate !== null ? parseFloat(driver.week_success_rate).toFixed(1) : null;
+        const weekSuccessRateDisplay = weekSuccessRate !== null ? weekSuccessRate + '%' : 'N/A';
+        
+        // Cancel rates with warning threshold
+        const cancelRate = driver.cancel_rate !== null ? parseFloat(driver.cancel_rate).toFixed(1) + '%' : 'N/A';
+        const monthCancelRate = driver.month_cancel_rate !== null ? parseFloat(driver.month_cancel_rate).toFixed(1) : null;
+        const monthCancelRateDisplay = monthCancelRate !== null ? monthCancelRate + '%' : 'N/A';
+        const monthCancelRateColor = monthCancelRate !== null && monthCancelRate > 10 ? 'red' : 'slate';
+        
+        // Revenues
+        const totalRevenue = (parseFloat(driver.total_revenue) || 0).toFixed(2);
+        const monthRevenue = (parseFloat(driver.month_revenue) || 0).toFixed(2);
+        const weekRevenue = (parseFloat(driver.week_revenue) || 0).toFixed(2);
+        
+        // Activity info
+        const lastActive = driver.last_active ? new Date(driver.last_active).toLocaleDateString() : 'N/A';
+        const driverSince = driver.driver_joined ? new Date(driver.driver_joined).toLocaleDateString() : 'N/A';
+        
+        const dataSourceClass = 'data-source-' + currentDataSource;
+        
+        return '<div class="driver-card ' + dataSourceClass + ' bg-slate-800 rounded-xl p-6 border-2 border-slate-700">' +
+          '<!-- Header -->' +
           '<div class="flex items-start gap-4 mb-4">' +
             '<div class="w-16 h-16 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white font-bold text-xl">' +
               initials +
@@ -1250,27 +1487,86 @@ function serveDriverStats(pin) {
               '<h3 class="text-lg font-bold">' + name + '</h3>' +
               '<p class="text-xs text-slate-400">' + (driver.email || 'No email') + '</p>' +
               '<span class="text-xs text-' + (driver.is_online ? 'green' : 'slate') + '-400">' +
-                (driver.is_online ? 'Online' : 'Offline') +
+                (driver.is_online ? '● Online' : '● Offline') +
               '</span>' +
             '</div>' +
           '</div>' +
-          '<div class="grid grid-cols-2 gap-3">' +
+          
+          '<!-- Current Activity Status -->' +
+          '<div class="flex gap-2 mb-4 text-xs">' +
+            '<span class="bg-blue-900/30 text-blue-400 px-2 py-1 rounded">Assigned: ' + (driver.assigned_count || 0) + '</span>' +
+            '<span class="bg-purple-900/30 text-purple-400 px-2 py-1 rounded">In Transit: ' + (driver.in_transit_count || 0) + '</span>' +
+            '<span class="bg-slate-700 text-slate-300 px-2 py-1 rounded">Pending: ' + (driver.pending_count || 0) + '</span>' +
+          '</div>' +
+          
+          '<!-- Main Metrics Grid -->' +
+          '<div class="grid grid-cols-2 gap-3 mb-3">' +
             '<div class="bg-slate-900/50 rounded-lg p-3">' +
-              '<div class="text-xs text-slate-400">Total Completed</div>' +
-              '<div class="text-2xl font-bold">' + (driver.total_completed || 0) + '</div>' +
+              '<div class="text-xs text-slate-400">Total Assigned</div>' +
+              '<div class="text-xl font-bold">' + (driver.total_assigned || 0) + '</div>' +
             '</div>' +
             '<div class="bg-slate-900/50 rounded-lg p-3">' +
-              '<div class="text-xs text-slate-400">Success Rate</div>' +
-              '<div class="text-2xl font-bold text-green-400">' + successRate + '</div>' +
+              '<div class="text-xs text-slate-400">All-Time Success</div>' +
+              '<div class="text-xl font-bold text-' + successRateColor + '-400">' + successRateDisplay + '</div>' +
             '</div>' +
             '<div class="bg-slate-900/50 rounded-lg p-3">' +
+              '<div class="text-xs text-slate-400">All-Time Cancel</div>' +
+              '<div class="text-xl font-bold text-slate-400">' + cancelRate + '</div>' +
+            '</div>' +
+            '<div class="bg-slate-900/50 rounded-lg p-3">' +
+              '<div class="text-xs text-slate-400">Rating</div>' +
+              '<div class="text-xl font-bold text-slate-400">' + (driver.avg_rating || 0).toFixed(1) + ' ★</div>' +
+            '</div>' +
+          '</div>' +
+          
+          '<!-- Revenue Stats -->' +
+          '<div class="grid grid-cols-3 gap-2 mb-3">' +
+            '<div class="bg-slate-900/50 rounded-lg p-2">' +
               '<div class="text-xs text-slate-400">Total Revenue</div>' +
-              '<div class="text-xl font-bold text-emerald-400">$' + (parseFloat(driver.total_revenue) || 0).toFixed(2) + '</div>' +
+              '<div class="text-lg font-bold text-emerald-400">$' + totalRevenue + '</div>' +
             '</div>' +
-            '<div class="bg-slate-900/50 rounded-lg p-3">' +
-              '<div class="text-xs text-slate-400">Week Completed</div>' +
-              '<div class="text-xl font-bold">' + (driver.week_completed || 0) + '</div>' +
+            '<div class="bg-slate-900/50 rounded-lg p-2">' +
+              '<div class="text-xs text-slate-400">30-Day Revenue</div>' +
+              '<div class="text-lg font-bold text-emerald-400">$' + monthRevenue + '</div>' +
             '</div>' +
+            '<div class="bg-slate-900/50 rounded-lg p-2">' +
+              '<div class="text-xs text-slate-400">Weekly Revenue</div>' +
+              '<div class="text-lg font-bold text-emerald-400">$' + weekRevenue + '</div>' +
+            '</div>' +
+          '</div>' +
+          
+          '<!-- 30-Day Performance -->' +
+          '<div class="grid grid-cols-2 gap-3 mb-3">' +
+            '<div class="bg-slate-900/50 rounded-lg p-3 border border-' + monthSuccessRateColor + '-500/30">' +
+              '<div class="text-xs text-slate-400">30-Day Success Rate</div>' +
+              '<div class="text-xl font-bold text-' + monthSuccessRateColor + '-400">' + monthSuccessRateDisplay + '</div>' +
+            '</div>' +
+            '<div class="bg-slate-900/50 rounded-lg p-3 border border-' + monthCancelRateColor + '-500/30">' +
+              '<div class="text-xs text-slate-400">30-Day Cancel Rate</div>' +
+              '<div class="text-xl font-bold text-' + monthCancelRateColor + '-400">' + monthCancelRateDisplay + '</div>' +
+            '</div>' +
+          '</div>' +
+          
+          '<!-- Weekly Performance -->' +
+          '<div class="grid grid-cols-3 gap-2 mb-3">' +
+            '<div class="bg-slate-900/50 rounded-lg p-2">' +
+              '<div class="text-xs text-slate-400">Weekly Completed</div>' +
+              '<div class="text-lg font-bold">' + (driver.week_completed || 0) + '</div>' +
+            '</div>' +
+            '<div class="bg-slate-900/50 rounded-lg p-2">' +
+              '<div class="text-xs text-slate-400">Monthly Completed</div>' +
+              '<div class="text-lg font-bold">' + (driver.month_completed || 0) + '</div>' +
+            '</div>' +
+            '<div class="bg-slate-900/50 rounded-lg p-2">' +
+              '<div class="text-xs text-slate-400">Weekly Success</div>' +
+              '<div class="text-lg font-bold text-blue-400">' + weekSuccessRateDisplay + '</div>' +
+            '</div>' +
+          '</div>' +
+          
+          '<!-- Activity Info -->' +
+          '<div class="flex justify-between text-xs text-slate-500 pt-3 border-t border-slate-700">' +
+            '<span>Last Active: ' + lastActive + '</span>' +
+            '<span>Driver Since: ' + driverSince + '</span>' +
           '</div>' +
         '</div>';
       }).join('');
@@ -1288,7 +1584,9 @@ function serveDriverStats(pin) {
       setTimeout(() => div.remove(), 3000);
     }
 
+    // Initialize
     refreshData();
+    startAutoRefresh();
   </script>
 </body>
 </html>`, { 
