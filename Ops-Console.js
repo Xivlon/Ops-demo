@@ -54,18 +54,13 @@ export default {
       
       // Check if mode is specified in request body
       const body = await request.json();
-      const { mode = 'cached' } = body;
+      const { mode = 'cached', query, params = [] } = body;
       
       if (mode === 'live') {
         return await handleLiveDriverStats(env);
       } else {
-        // Create a new request with the original body for handleNeonQuery
-        const newRequest = new Request(request.url, {
-          method: 'POST',
-          headers: request.headers,
-          body: JSON.stringify(body)
-        });
-        return await handleNeonQuery(newRequest, env);
+        // Handle cached query directly with parsed body
+        return await handleNeonQueryWithBody(env, query, params);
       }
     }
 
@@ -152,7 +147,27 @@ export default {
 async function handleNeonQuery(request, env) {
   try {
     const { query, params = [] } = await request.json();
-    
+    return await handleNeonQueryWithBody(env, query, params);
+  } catch (error) {
+    console.error('Neon query error:', error);
+    return new Response(
+      JSON.stringify({ 
+        error: error.message,
+        code: "QUERY_EXECUTION_ERROR"
+      }),
+      { 
+        status: 500, 
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        } 
+      }
+    );
+  }
+}
+
+async function handleNeonQueryWithBody(env, query, params = []) {
+  try {
     const connectionString = env.DATABASE_URL;    
     if (!connectionString) {
       return new Response(
@@ -1233,6 +1248,7 @@ function serveDriverStats(pin) {
     let dataFreshness = null;
     let autoRefreshEnabled = true;
     let autoRefreshInterval = null;
+    let freshnessUpdateInterval = null;
     
     function setDataSource(source) {
       currentDataSource = source;
@@ -1368,7 +1384,12 @@ function serveDriverStats(pin) {
         }
         
         updateCacheFreshness();
-        setInterval(updateCacheFreshness, 10000); // Update freshness every 10 seconds
+        
+        // Clear existing freshness update interval before creating a new one
+        if (freshnessUpdateInterval) {
+          clearInterval(freshnessUpdateInterval);
+        }
+        freshnessUpdateInterval = setInterval(updateCacheFreshness, 10000); // Update freshness every 10 seconds
         
         document.getElementById('status-indicator').className = "w-2 h-2 rounded-full bg-green-500";
         document.getElementById('status-text').innerText = 'Connected - ' + allDrivers.length + ' drivers (' + currentDataSource + ')';
@@ -1390,15 +1411,20 @@ function serveDriverStats(pin) {
       const filterValue = document.getElementById('filter-select').value;
       if (filterValue === 'high-performers') {
         filtered = filtered.filter(d => {
-          const successRate = parseFloat(d.success_rate) || 0;
+          // Only include drivers with valid success rate data
+          if (d.success_rate === null || d.success_rate === undefined) return false;
+          const successRate = parseFloat(d.success_rate);
           const weekCompleted = parseInt(d.week_completed) || 0;
-          return successRate >= 90 && weekCompleted >= 20;
+          return !isNaN(successRate) && successRate >= 90 && weekCompleted >= 20;
         });
       } else if (filterValue === 'needs-attention') {
         filtered = filtered.filter(d => {
+          // Include drivers with no data
+          if (d.success_rate === null || d.success_rate === undefined) return true;
           const successRate = parseFloat(d.success_rate);
           const weekCompleted = parseInt(d.week_completed) || 0;
-          return successRate === null || successRate < 70 || weekCompleted < 5;
+          // Include drivers with poor performance
+          return isNaN(successRate) || successRate < 70 || weekCompleted < 5;
         });
       }
       
