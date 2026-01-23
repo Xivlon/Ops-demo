@@ -53,12 +53,40 @@ export default {
       }
       
       // Check if mode is specified in request body
-      const body = await request.json();
+      let body;
+      try {
+        body = await request.json();
+      } catch (error) {
+        return new Response(
+          JSON.stringify({ error: "Invalid JSON in request body", code: "INVALID_JSON" }),
+          {
+            status: 400,
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            }
+          }
+        );
+      }
+      
       const { mode = 'cached', query, params = [] } = body;
       
       if (mode === 'live') {
         return await handleLiveDriverStats(env);
       } else {
+        // Validate required query parameter for cached mode
+        if (!query) {
+          return new Response(
+            JSON.stringify({ error: "Missing required field: query", code: "MISSING_QUERY" }),
+            {
+              status: 400,
+              headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+              }
+            }
+          );
+        }
         // Handle cached query directly with parsed body
         return await handleNeonQueryWithBody(env, query, params);
       }
@@ -1393,6 +1421,11 @@ function serveDriverStats(pin) {
       try {
         showToast("Updating cache...", "blue");
         const res = await fetch('/api/refresh-driver-stats?pin=${pin}', { method: 'POST' });
+        
+        if (!res.ok) {
+          throw new Error(`HTTP error ${res.status}`);
+        }
+        
         const data = await res.json();
         
         if (data.success) {
@@ -1405,7 +1438,7 @@ function serveDriverStats(pin) {
           showToast("Failed to update cache", "red");
         }
       } catch (e) {
-        showToast("Failed to update cache", "red");
+        showToast("Failed to update cache: " + e.message, "red");
       }
     }
 
@@ -1421,6 +1454,10 @@ function serveDriverStats(pin) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ query: 'SELECT * FROM driver_stats ORDER BY total_completed DESC' })
           });
+        }
+        
+        if (!res.ok) {
+          throw new Error(`HTTP error ${res.status}`);
         }
         
         const data = await res.json();
@@ -1523,13 +1560,15 @@ function serveDriverStats(pin) {
         // Success rates with color coding
         const successRate = driver.success_rate !== null ? parseFloat(driver.success_rate).toFixed(1) : null;
         const successRateDisplay = successRate !== null ? successRate + '%' : 'N/A';
-        const successRateColor = successRate !== null && successRate >= 90 ? 'green' : 
-                                  successRate !== null && successRate >= 70 ? 'yellow' : 'red';
+        const successRateColor = successRate !== null 
+                                  ? (successRate >= 90 ? 'green' : successRate >= 70 ? 'yellow' : 'red')
+                                  : 'slate';
         
         const monthSuccessRate = driver.month_success_rate !== null ? parseFloat(driver.month_success_rate).toFixed(1) : null;
         const monthSuccessRateDisplay = monthSuccessRate !== null ? monthSuccessRate + '%' : 'N/A';
-        const monthSuccessRateColor = monthSuccessRate !== null && monthSuccessRate >= 90 ? 'green' : 
-                                       monthSuccessRate !== null && monthSuccessRate >= 70 ? 'yellow' : 'red';
+        const monthSuccessRateColor = monthSuccessRate !== null 
+                                       ? (monthSuccessRate >= 90 ? 'green' : monthSuccessRate >= 70 ? 'yellow' : 'red')
+                                       : 'slate';
         
         const weekSuccessRate = driver.week_success_rate !== null ? parseFloat(driver.week_success_rate).toFixed(1) : null;
         const weekSuccessRateDisplay = weekSuccessRate !== null ? weekSuccessRate + '%' : 'N/A';
