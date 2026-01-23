@@ -301,8 +301,8 @@ async function handleRefreshDriverStats(env) {
         dp.last_name,
         dp.email,
         dp.is_online,
-        dp.profile_photo_url,
-        dp.created_at as driver_joined,
+        NULL as profile_photo_url,
+        dp.account_created_at as driver_joined,
         
         -- Total shipments assigned to this driver
         -- Note: For drivers with no shipments (due to LEFT JOIN), this will be 0
@@ -326,7 +326,7 @@ async function handleRefreshDriverStats(env) {
         COALESCE(SUM(s.price_cents) FILTER (WHERE s.status = 'DELIVERED' AND s.delivered_at > NOW() - INTERVAL '7 days'), 0) / 100.0 as week_revenue,
         
         -- Activity tracking (use COALESCE to handle NULL from LEFT JOIN for drivers with no shipments)
-        MAX(COALESCE(GREATEST(s.delivered_at, dp.updated_at), dp.updated_at)) as last_active,
+        MAX(COALESCE(GREATEST(s.delivered_at, dp.account_updated_at), dp.account_updated_at)) as last_active,
         
         -- Success rate calculation
         CASE 
@@ -345,15 +345,15 @@ async function handleRefreshDriverStats(env) {
         END as cancel_rate,
         
         -- Average rating
-        COALESCE(AVG(s.rating), 0) as avg_rating,
-        COUNT(s.rating) as rating_count,
+        0 as avg_rating,
+        0 as rating_count,
         
         NOW() as stats_updated_at
 
       FROM driver_profiles dp
       LEFT JOIN shipments s ON s.driver_id = dp.id
       WHERE dp.user_type = 'driver'
-      GROUP BY dp.id, dp.first_name, dp.last_name, dp.email, dp.is_online, dp.profile_photo_url, dp.created_at
+      GROUP BY dp.id, dp.first_name, dp.last_name, dp.email, dp.is_online, dp.account_created_at
     `;
 
     // Get the count of updated drivers
