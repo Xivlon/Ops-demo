@@ -5,7 +5,6 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
-    // Handle CORS preflight
     if (request.method === "OPTIONS") {
       return new Response(null, {
         headers: {
@@ -16,11 +15,9 @@ export default {
       });
     }
 
-    // 1. Security Check
     const adminPin = env.ADMIN_PIN || "1234";
     const pinParam = url.searchParams.get("pin");
     
-    // Check PIN for page routes
     if ((path === "/" || path === "/drivers") && pinParam !== adminPin) {
       return new Response("Unauthorized Access", { 
         status: 401,
@@ -31,7 +28,6 @@ export default {
       });
     }
 
-    // 2. Handle API requests for Neon DB queries
     if (path === "/api/neon-query" && request.method === "POST") {
       if (pinParam !== adminPin) {
         return new Response(JSON.stringify({ error: "Unauthorized Access", code: "UNAUTHORIZED" }), { 
@@ -45,7 +41,6 @@ export default {
       return await handleNeonQuery(request, env);
     }
 
-    // 3. Handle driver stats API (cached)
     if (path === "/api/driver-stats" && request.method === "POST") {
       if (pinParam !== adminPin) {
         return new Response(JSON.stringify({ error: "Unauthorized Access", code: "UNAUTHORIZED" }), { 
@@ -59,7 +54,6 @@ export default {
       return await handleNeonQuery(request, env);
     }
 
-    // 4. Handle driver timeline API
     if (path.startsWith("/api/driver-timeline/") && request.method === "POST") {
       if (pinParam !== adminPin) {
         return new Response(JSON.stringify({ error: "Unauthorized Access", code: "UNAUTHORIZED" }), { 
@@ -98,7 +92,6 @@ export default {
       return await handleNeonQuery(request, env);
     }
 
-    // 5. Handle driver stats refresh API
     if (path === "/api/refresh-driver-stats" && request.method === "POST") {
       if (pinParam !== adminPin) {
         return new Response(JSON.stringify({ error: "Unauthorized Access", code: "UNAUTHORIZED" }), { 
@@ -112,7 +105,6 @@ export default {
       return await handleRefreshDriverStats(env);
     }
 
-    // 6. NEW: Handle live driver stats (real-time)
     if (path === "/api/live-driver-stats" && request.method === "POST") {
       if (pinParam !== adminPin) {
         return new Response(JSON.stringify({ error: "Unauthorized Access", code: "UNAUTHORIZED" }), { 
@@ -126,17 +118,14 @@ export default {
       return await handleLiveDriverStats(env);
     }
 
-    // 7. Test endpoint
     if (path === "/test") {
       return await testConnection(env);
     }
 
-    // 8. Serve the driver stats page
     if (path === "/drivers") {
       return serveDriverStats(url.searchParams.get("pin"));
     }
 
-    // 9. Serve the dashboard
     if (path === "/") {
       return serveDashboard(url.searchParams.get("pin"));
     }
@@ -145,7 +134,6 @@ export default {
   }
 };
 
-// Function to handle Neon DB queries
 async function handleNeonQuery(request, env) {
   try {
     const { query, params = [] } = await request.json();
@@ -214,7 +202,6 @@ async function handleNeonQuery(request, env) {
   }
 }
 
-// NEW: Function to handle live driver stats (real-time from shipments table)
 async function handleLiveDriverStats(env) {
   try {
     const connectionString = env.DATABASE_URL;
@@ -355,7 +342,6 @@ async function handleLiveDriverStats(env) {
   }
 }
 
-// Function to refresh driver stats - computes stats and stores in driver_stats table
 async function handleRefreshDriverStats(env) {
   try {
     const connectionString = env.DATABASE_URL;
@@ -413,7 +399,6 @@ async function handleRefreshDriverStats(env) {
           stats_updated_at TIMESTAMP DEFAULT NOW()
         )
       `;
-      console.log('Driver stats table verified/created successfully');
     } catch (tableError) {
       console.error('Error creating driver_stats table:', tableError);
       return new Response(
@@ -628,7 +613,6 @@ async function testConnection(env) {
   }
 }
 
-// Function to serve the dashboard HTML
 function serveDashboard(pin) {
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -806,20 +790,11 @@ function serveDashboard(pin) {
 
     async function loadStats() {
         try {
-            const res = await fetch(\`/api/neon-query?pin=${pin}\`, {
+            const res = await fetch('/api/neon-query?pin=${pin}', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
-                    query: \`SELECT 
-                      COUNT(*) FILTER (WHERE status = 'PENDING') as pending,
-                      COUNT(*) FILTER (WHERE status = 'ASSIGNED') as assigned,
-                      COUNT(*) FILTER (WHERE status = 'PICKED_UP') as picked_up,
-                      COUNT(*) FILTER (WHERE status = 'DELIVERED') as delivered,
-                      COALESCE(SUM(price_cents), 0) / 100.0 as total_revenue,
-                      (SELECT COUNT(*) FROM driver_profiles WHERE is_online = true AND user_type = 'driver') as online_drivers,
-                      (SELECT COUNT(*) FROM driver_profiles WHERE user_type = 'driver') as total_drivers
-                    FROM shipments
-                    WHERE created_at > NOW() - INTERVAL '30 days'\`
+                    query: 'SELECT COUNT(*) FILTER (WHERE status = \\'PENDING\\') as pending, COUNT(*) FILTER (WHERE status = \\'ASSIGNED\\') as assigned, COUNT(*) FILTER (WHERE status = \\'PICKED_UP\\') as picked_up, COUNT(*) FILTER (WHERE status = \\'DELIVERED\\') as delivered, COALESCE(SUM(price_cents), 0) / 100.0 as total_revenue, (SELECT COUNT(*) FROM driver_profiles WHERE is_online = true AND user_type = \\'driver\\') as online_drivers, (SELECT COUNT(*) FROM driver_profiles WHERE user_type = \\'driver\\') as total_drivers FROM shipments WHERE created_at > NOW() - INTERVAL \\'30 days\\''
                 })
             });
             
@@ -827,7 +802,7 @@ function serveDashboard(pin) {
             
             const makeCard = (label, val, color, clickable = false) => {
                 const cursor = clickable ? 'cursor-pointer' : '';
-                const onclick = clickable ? \`onclick="window.location.href='/drivers?pin=${pin}'" \` : '';
+                const onclick = clickable ? "onclick=\\"window.location.href='/drivers?pin=${pin}'\\" " : '';
                 return '<div ' + onclick + 'class="bg-slate-800 rounded-xl p-4 border border-slate-700 relative overflow-hidden group hover:border-' + color + '-500/50 transition-colors ' + cursor + '">' +
                        '<div class="absolute top-0 right-0 w-16 h-16 bg-' + color + '-500/10 rounded-bl-full -mr-2 -mt-2 transition-transform group-hover:scale-110"></div>' +
                        '<div class="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">' + label + '</div>' +
@@ -857,18 +832,11 @@ function serveDashboard(pin) {
 
     async function loadDrivers() {
         try {
-            const res = await fetch(\`/api/neon-query?pin=${pin}\`, {
+            const res = await fetch('/api/neon-query?pin=${pin}', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
-                    query: \`SELECT 
-                      id,
-                      email,
-                      CONCAT(first_name, ' ', last_name) as name,
-                      is_online
-                    FROM driver_profiles
-                    WHERE user_type = 'driver'
-                    ORDER BY is_online DESC, first_name ASC\`
+                    query: "SELECT id, email, CONCAT(first_name, ' ', last_name) as name, is_online FROM driver_profiles WHERE user_type = 'driver' ORDER BY is_online DESC, first_name ASC"
                 })
             });
             
@@ -883,33 +851,11 @@ function serveDashboard(pin) {
     async function loadShipments() {
         const tbody = document.getElementById('table-body');
         try {
-            const res = await fetch(\`/api/neon-query?pin=${pin}\`, {
+            const res = await fetch('/api/neon-query?pin=${pin}', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
-                    query: \`SELECT 
-                      s.id,
-                      s.created_at,
-                      s.status,
-                      s.driver_id,
-                      s.origin_airport,
-                      s.destination_airport,
-                      s.pickup_address,
-                      s.dropoff_address,
-                      s.pickup_photo_url,
-                      s.delivery_photo_url,
-                      s.price_cents,
-                      s.customer_name,
-                      s.customer_email,
-                      s.customer_phone,
-                      s.luggage_description,
-                      s.special_instructions,
-                      CONCAT(dp.first_name, ' ', dp.last_name) as driver_name
-                    FROM shipments s
-                    LEFT JOIN driver_profiles dp ON s.driver_id = dp.id
-                    WHERE s.created_at > NOW() - INTERVAL '30 days'
-                    ORDER BY s.created_at DESC
-                    LIMIT 100\`
+                    query: "SELECT s.id, s.created_at, s.status, s.driver_id, s.origin_airport, s.destination_airport, s.pickup_address, s.dropoff_address, s.pickup_photo_url, s.delivery_photo_url, s.price_cents, s.customer_name, s.customer_email, s.customer_phone, s.luggage_description, s.special_instructions, CONCAT(dp.first_name, ' ', dp.last_name) as driver_name FROM shipments s LEFT JOIN driver_profiles dp ON s.driver_id = dp.id WHERE s.created_at > NOW() - INTERVAL '30 days' ORDER BY s.created_at DESC LIMIT 100"
                 })
             });
             
@@ -1004,7 +950,7 @@ function serveDashboard(pin) {
                             '<option value="">Assign...</option>' +
                             options +
                         '</select>' +
-                        '<button onclick="assignDriver(\\'' + s.id + '\\')" class="bg-green-600 hover:bg-green-500 text-white p-1 rounded transition-colors" title="Confirm Assignment">' +
+                        '<button onclick="assignDriver(\\''+s.id+'\\')" class="bg-green-600 hover:bg-green-500 text-white p-1 rounded transition-colors" title="Confirm Assignment">' +
                             '<i data-lucide="check" class="w-3 h-3"></i>' +
                         '</button>' +
                     '</div>';
@@ -1088,14 +1034,11 @@ function serveDashboard(pin) {
 
         try {
             select.disabled = true;
-            const res = await fetch(\`/api/neon-query?pin=${pin}\`, {
+            const res = await fetch('/api/neon-query?pin=${pin}', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
-                    query: \`UPDATE shipments 
-                            SET status = 'ASSIGNED', driver_id = \$1, claimed_at = NOW() 
-                            WHERE id = \$2 
-                            RETURNING id\`,
+                    query: 'UPDATE shipments SET status = \\'ASSIGNED\\', driver_id = $1, claimed_at = NOW() WHERE id = $2 RETURNING id',
                     params: [driverId, shipmentId]
                 })
             });
@@ -1139,91 +1082,11 @@ function serveDashboard(pin) {
   });
 }
 
-// Function to serve the driver stats HTML with hybrid capabilities
 function serveDriverStats(pin) {
-  const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Driver Performance - LuggageLink Ops</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            slate: {
-              50: '#f8fafc', 100: '#f1f5f9', 200: '#e2e8f0', 300: '#cbd5e1',
-              400: '#94a3b8', 500: '#64748b', 600: '#475569', 700: '#334155',
-              800: '#1e293b', 900: '#0f172a', 950: '#020617',
-            }
-          }
-        }
-      }
-    }
-  </script>
-  <script src="https://unpkg.com/lucide@latest"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <style>
-    body { font-family: sans-serif; }
-    ::-webkit-scrollbar { width: 8px; }
-    ::-webkit-scrollbar-track { background: #0f172a; }
-    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
-    ::-webkit-scrollbar-thumb:hover { background: #475569; }
-    .driver-card { transition: all 0.3s ease; }
-    .driver-card:hover { transform: translateY(-2px); }
-    .performance-high { border-color: #22c55e; }
-    .performance-average { border-color: #eab308; }
-    .performance-low { border-color: #ef4444; }
-    .data-source-cached { border-left-color: #8b5cf6; border-left-width: 4px; }
-    .data-source-live { border-left-color: #10b981; border-left-width: 4px; }
-  </style>
-</head>
-<body class="bg-slate-900 text-slate-100 min-h-screen">
-  
-  <nav class="bg-slate-800 border-b border-slate-700 px-6 py-4 sticky top-0 z-50">
-    <div class="max-w-7xl mx-auto flex justify-between items-center">
-      <div class="flex items-center gap-3">
-        <div class="bg-purple-600 p-2.5 rounded-lg">
-          <i data-lucide="users" class="w-7 h-7"></i>
-        </div>
-        <div>
-          <h1 class="text-xl font-bold">Driver Performance</h1>
-          <div class="flex items-center gap-2">
-            <span id="status-indicator" class="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></span>
-            <p id="status-text" class="text-xs text-slate-400">Loading...</p>
-          </div>
-        </div>
-      </div>
-      <div class="flex items-center gap-3">
-        <span id="data-source-badge" class="bg-slate-700 px-2.5 py-1 rounded-full text-xs font-bold flex items-center gap-1">
-          <i data-lucide="database" class="w-3 h-3"></i>
-          <span id="data-source-text">Cached</span>
-        </span>
-        <button onclick="window.location.href='/?pin=${pin}'" class="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-lg text-sm flex items-center gap-2">
-          <i data-lucide="arrow-left" class="w-4 h-4"></i>
-          Back
-        </button>
-      </div>
-    </div>
-  </nav>
-
-  <div class="max-w-7xl mx-auto p-6 space-y-6">
-    <div id="toast-container" class="fixed top-24 right-6 z-50"></div>
-
-    <div class="bg-slate-800 rounded-xl p-4 border border-slate-700 flex flex-wrap gap-4">
-      <div class="flex items-center gap-2">
-        <i data-lucide="refresh-cw" class="w-4 h-4 text-slate-400"></i>
-        <label class="text-sm font-semibold text-slate-400">Data Source:</label>
-        <div class="flex bg-slate-900 rounded-lg border border-slate-600 overflow-hidden">
-          <button id="btn-cached" onclick="setDataSource('cached')" class="px-3 py-2 text-sm font-semibold text-green-400 bg-slate-800">
-            <i data-lucide="database" class="w-4 h-4 inline mr-1"></i>Cached
-          </button>
-          <button id="btn-live" onclick="setDataSource('live')" class="px-3 py-2 text-sm font-semibold text-slate-400">
-            <i data-lucide="zap" class="w-4 h-4 inline mr-1"></i>Live
-          </button>
-        </div>
-      </div>
-      
-      <button onclick="refreshData()" class="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-lg text-sm flex items-center gap-2">
+  return new Response("Driver Stats page - Coming soon!", { 
+    headers: { 
+      "Content-Type": "text/html",
+      "X-Content-Type-Options": "nosniff"
+    } 
+  });
+}
