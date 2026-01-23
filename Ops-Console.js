@@ -1177,37 +1177,36 @@ function getStatusClass(status) {
 
         renderTable();
     }
+async function assignDriver(shipmentId) {
+    const select = document.getElementById('assign-' + shipmentId);
+    const driverId = select.value;
+    if(!driverId) return;
 
-    async function assignDriver(shipmentId) {
-        const select = document.getElementById('assign-' + shipmentId);
-        const driverId = select.value;
-        if(!driverId) return;
+    try {
+        select.disabled = true;
+        const res = await fetch(`/api/neon-query?pin=${pin}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                query: "UPDATE shipments SET status = 'ASSIGNED', driver_id = $1, claimed_at = NOW() WHERE id = $2 RETURNING id",
+                params: [driverId, shipmentId]
+            })
+        });
 
-        try {
-            select.disabled = true;
-            const res = await fetch(`/api/neon-query?pin=${pin}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    query: 'UPDATE shipments SET status = \\'ASSIGNED\\', driver_id = $1, claimed_at = NOW() WHERE id = $2 RETURNING id',
-                    params: [driverId, shipmentId]
-                })
-            });
-
-            if (res.ok) {
-                showToast("Driver assigned successfully", "green");
-                await refreshData();
-            } else {
-                const err = await res.json();
-                showToast(err.error || "Failed to assign", "red");
-                select.disabled = false;
-            }
-        } catch (e) {
-            console.error(e);
-            showToast("Network Error", "red");
+        if (res.ok) {
+            showToast("Driver assigned successfully", "green");
+            await refreshData();
+        } else {
+            const err = await res.json();
+            showToast(err.error || "Failed to assign", "red");
             select.disabled = false;
         }
+    } catch (e) {
+        console.error(e);
+        showToast("Network Error", "red");
+        select.disabled = false;
     }
+}
 
     function showToast(msg, color) {
         const container = document.getElementById('toast-container');
