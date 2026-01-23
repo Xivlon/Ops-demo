@@ -880,103 +880,150 @@ function serveDashboard(pin) {
   </div>
 
   <script>
-    lucide.createIcons();
+   lucide.createIcons();
+
+let allShipments = [];
+let allDrivers = [];
+let sortOrder = { 1: 'desc' };
+let currentSortedCol = 1;
+
+async function refreshData() {
+    await loadDrivers();
+    await Promise.all([loadStats(), loadShipments()]);
+}
+
+async function loadStats() {
+    try {
+        const res = await fetch(`/api/neon-query?pin=${pin}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                query: `SELECT 
+                    COUNT(*) FILTER (WHERE status = 'PENDING') as pending, 
+                    COUNT(*) FILTER (WHERE status = 'ASSIGNED') as assigned, 
+                    COUNT(*) FILTER (WHERE status = 'PICKED_UP') as picked_up, 
+                    COUNT(*) FILTER (WHERE status = 'DELIVERED') as delivered, 
+                    COALESCE(SUM(price_cents), 0) / 100.0 as total_revenue,
+                    (SELECT COUNT(*) FROM driver_profiles WHERE is_online = true AND user_type = 'driver') as online_drivers,
+                    (SELECT COUNT(*) FROM driver_profiles WHERE user_type = 'driver') as total_drivers 
+                FROM shipments 
+                WHERE created_at > NOW() - INTERVAL '30 days'`
+            })
+        });
+
+        const data = await res.json();
+        
+        const makeCard = (label, val, color, clickable = false) => {
+            const cursor = clickable ? 'cursor-pointer' : '';
+            const onclick = clickable ? `onclick="window.location.href='/drivers?pin=${pin}'"` : '';
+            return `<div ${onclick} class="bg-slate-800 rounded-xl p-4 border border-slate-700 relative overflow-hidden group hover:border-${color}-500/50 transition-colors ${cursor}">
+                   <div class="absolute top-0 right-0 w-16 h-16 bg-${color}-500/10 rounded-bl-full -mr-2 -mt-2 transition-transform group-hover:scale-110"></div>
+                   <div class="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">${label}</div>
+                   <div class="text-2xl font-black text-${color}-400 relative z-10">${val || 0}</div>
+                   </div>`;
+        };
+
+        const grid = document.getElementById('stats-grid');
+        grid.innerHTML = 
+            makeCard('Pending', data.rows?.[0]?.pending, 'yellow') +
+            makeCard('Assigned', data.rows?.[0]?.assigned, 'blue') +
+            makeCard('In Transit', data.rows?.[0]?.picked_up, 'purple') +
+            makeCard('Completed', data.rows?.[0]?.delivered, 'green') +
+            makeCard('Revenue', '$' + parseFloat(data.rows?.[0]?.total_revenue || 0).toFixed(2), 'emerald') +
+            makeCard('Active Drivers', (data.rows?.[0]?.online_drivers || 0) + '/' + (data.rows?.[0]?.total_drivers || 0), 'orange', true);
+
+        document.getElementById('status-indicator').className = "w-2 h-2 rounded-full bg-green-500";
+        document.getElementById('status-text').innerText = "Connected";
+
+    } catch (e) { 
+        document.getElementById('status-indicator').className = "w-2 h-2 rounded-full bg-red-500";
+        document.getElementById('status-text').innerText = "Connection Error";
+        showToast("Failed to load statistics", "red");
+    }
+}
+
+async function loadDrivers() {
+    try {
+        const res = await fetch(`/api/neon-query?pin=${pin}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                query: "SELECT id, email, CONCAT(first_name, ' ', last_name) as name, is_online FROM driver_profiles WHERE user_type = 'driver' ORDER BY is_online DESC, first_name ASC"
+            })
+        });
+        
+        const data = await res.json();
+        allDrivers = data.rows || [];
+    } catch (e) { 
+        showToast("Failed to load drivers", "red");
+    }
+}
+
+async function loadShipments() {
+    const tbody = document.getElementById('table-body');
+    try {
+        const res = await fetch(`/api/neon-query?pin=${pin}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                query: "SELECT s.id, s.created_at, s.status, s.driver_id, s.origin_airport, s.destination_airport, s.pickup_address, s.dropoff_address, s.pickup_photo_url, s.delivery_photo_url, s.price_cents, s.customer_name, s.customer_email, s.customer_phone, s.luggage_description, s.special_instructions, CONCAT(dp.first_name, ' ', dp.last_name) as driver_name FROM shipments s LEFT JOIN driver_profiles dp ON s.driver_id = dp.id WHERE s.created_at > NOW() - INTERVAL '30 days' ORDER BY s.created_at DESC LIMIT 100"
+            })
+        });
+        
+        const data = await res.json();
+        allShipments = data.rows || [];
+        
+        document.getElementById('count-badge').innerText = allShipments.length;
+        document.getElementById('last-updated').innerText = "Synced: " + new Date().toLocaleTimeString();
+
+        renderTable();
+
+    } catch (e) { 
+        tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-12 text-center text-red-400">Connection Error: ' + e.message + '</td></tr>';
+        showToast("Failed to load shipments", "red");
+    }
+}
+
+function renderTable() {
+    const tbody = document.getElementById('table-body');
+    tbody.innerHTML = '';
     
-    let allShipments = [];
-    let allDrivers = [];
-    let sortOrder = { 1: 'desc' };
-    let currentSortedCol = 1;
+    allShipments.forEach(s => {
+        const row = document.createElement('tr');
+        row.className = 'border-b border-slate-800 hover:bg-slate-800/30';
+        row.innerHTML = `
+            <td class="px-6 py-4 whitespace-nowrap">
+                <div class="text-sm font-medium text-slate-200">${s.id}</div>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap">
+                <div class="text-sm text-slate-300">${new Date(s.created_at).toLocaleDateString()}</div>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap">
+                <span class="px-2 py-1 text-xs font-medium rounded-full ${getStatusClass(s.status)}">${s.status}</span>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap">
+                <div class="text-sm text-slate-300">${s.driver_name || 'Unassigned'}</div>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap">
+                <div class="text-sm text-slate-300">${s.origin_airport} → ${s.destination_airport}</div>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-300">
+                $${(s.price_cents / 100).toFixed(2)}
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+}
 
-    async function refreshData() {
-        await loadDrivers();
-        await Promise.all([loadStats(), loadShipments()]);
-    }
-
-    async function loadStats() {
-        try {
-            const res = await fetch(`/api/neon-query?pin=${pin}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    query: 'SELECT COUNT(*) FILTER (WHERE status = \\'PENDING\\') as pending, COUNT(*) FILTER (WHERE status = \\'ASSIGNED\\') as assigned, COUNT(*) FILTER (WHERE status = \\'PICKED_UP\\') as picked_up, COUNT(*) FILTER (WHERE status = \\'DELIVERED\\') as delivered, COALESCE(SUM(price_cents), 0) / 100.0 as total_revenue, (SELECT COUNT(*) FROM driver_profiles WHERE is_online = true AND user_type = \\'driver\\') as online_drivers, (SELECT COUNT(*) FROM driver_profiles WHERE user_type = \\'driver\\') as total_drivers FROM shipments WHERE created_at > NOW() - INTERVAL \\'30 days\\''
-                })
-            });
-            
-            const data = await res.json();
-            
-            const makeCard = (label, val, color, clickable = false) => {
-                const cursor = clickable ? 'cursor-pointer' : '';
-                const onclick = clickable ? "onclick=\\"window.location.href='/drivers?pin=${pin}'\\" " : '';
-                return '<div ' + onclick + 'class="bg-slate-800 rounded-xl p-4 border border-slate-700 relative overflow-hidden group hover:border-' + color + '-500/50 transition-colors ' + cursor + '">' +
-                       '<div class="absolute top-0 right-0 w-16 h-16 bg-' + color + '-500/10 rounded-bl-full -mr-2 -mt-2 transition-transform group-hover:scale-110"></div>' +
-                       '<div class="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">' + label + '</div>' +
-                       '<div class="text-2xl font-black text-' + color + '-400 relative z-10">' + (val || 0) + '</div>' +
-                       '</div>';
-            };
-
-            const grid = document.getElementById('stats-grid');
-            grid.innerHTML = 
-                makeCard('Pending', data.rows?.[0]?.pending, 'yellow') +
-                makeCard('Assigned', data.rows?.[0]?.assigned, 'blue') +
-                makeCard('In Transit', data.rows?.[0]?.picked_up, 'purple') +
-                makeCard('Completed', data.rows?.[0]?.delivered, 'green') +
-                makeCard('Revenue', '$' + parseFloat(data.rows?.[0]?.total_revenue || 0).toFixed(2), 'emerald') +
-                makeCard('Active Drivers', (data.rows?.[0]?.online_drivers || 0) + '/' + (data.rows?.[0]?.total_drivers || 0), 'orange', true);
-
-            document.getElementById('status-indicator').className = "w-2 h-2 rounded-full bg-green-500";
-            document.getElementById('status-text').innerText = "Connected";
-
-        } catch (e) { 
-            console.warn("Stats error", e);
-            document.getElementById('status-indicator').className = "w-2 h-2 rounded-full bg-red-500";
-            document.getElementById('status-text').innerText = "Connection Error";
-            showToast("Failed to load statistics", "red");
-        }
-    }
-
-    async function loadDrivers() {
-        try {
-            const res = await fetch(`/api/neon-query?pin=${pin}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    query: "SELECT id, email, CONCAT(first_name, ' ', last_name) as name, is_online FROM driver_profiles WHERE user_type = 'driver' ORDER BY is_online DESC, first_name ASC"
-                })
-            });
-            
-            const data = await res.json();
-            allDrivers = data.rows || [];
-        } catch (e) { 
-            console.error("Driver load failed", e);
-            showToast("Failed to load drivers", "red");
-        }
-    }
-
-    async function loadShipments() {
-        const tbody = document.getElementById('table-body');
-        try {
-            const res = await fetch(`/api/neon-query?pin=${pin}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    query: "SELECT s.id, s.created_at, s.status, s.driver_id, s.origin_airport, s.destination_airport, s.pickup_address, s.dropoff_address, s.pickup_photo_url, s.delivery_photo_url, s.price_cents, s.customer_name, s.customer_email, s.customer_phone, s.luggage_description, s.special_instructions, CONCAT(dp.first_name, ' ', dp.last_name) as driver_name FROM shipments s LEFT JOIN driver_profiles dp ON s.driver_id = dp.id WHERE s.created_at > NOW() - INTERVAL '30 days' ORDER BY s.created_at DESC LIMIT 100"
-                })
-            });
-            
-            const data = await res.json();
-            allShipments = data.rows || [];
-            
-            document.getElementById('count-badge').innerText = allShipments.length;
-            document.getElementById('last-updated').innerText = "Synced: " + new Date().toLocaleTimeString();
-
-            renderTable();
-
-        } catch (e) { 
-            console.error("Shipment load failed", e); 
-            tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-12 text-center text-red-400">Connection Error: ' + e.message + '</td></tr>';
-            showToast("Failed to load shipments", "red");
-        }
-    }
+function getStatusClass(status) {
+    const classes = {
+        'PENDING': 'bg-yellow-500/20 text-yellow-400',
+        'ASSIGNED': 'bg-blue-500/20 text-blue-400',
+        'PICKED_UP': 'bg-purple-500/20 text-purple-400',
+        'DELIVERED': 'bg-green-500/20 text-green-400'
+    };
+    return classes[status] || 'bg-slate-500/20 text-slate-400';
+}
 
     function escapeHtml(text) {
         if (!text) return '';
