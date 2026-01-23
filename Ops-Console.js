@@ -881,7 +881,7 @@ function serveDashboard(pin) {
 
   <script>
    lucide.createIcons();
-
+   const pin = '${pin}';
 let allShipments = [];
 let allDrivers = [];
 let sortOrder = { 1: 'desc' };
