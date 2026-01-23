@@ -581,7 +581,7 @@ function serveDashboard(pin) {
                 <option value="">All Statuses</option>
                 <option value="PENDING">Pending</option>
                 <option value="ASSIGNED">Assigned</option>
-                <option value="PICKED_UP">Picked Up</option>
+                <option value="PICKED_UP">In-Transit</option>
                 <option value="DELIVERED">Delivered</option>
              </select>
          </div>
