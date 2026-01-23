@@ -301,7 +301,7 @@ async function handleRefreshDriverStats(env) {
         dp.last_name,
         dp.email,
         dp.is_online,
-        NULL as profile_photo_url,
+        NULL as profile_photo_url, -- Column doesn't exist in schema
         dp.account_created_at as driver_joined,
         
         -- Total shipments assigned to this driver
@@ -344,7 +344,7 @@ async function handleRefreshDriverStats(env) {
           ELSE NULL
         END as cancel_rate,
         
-        -- Average rating
+        -- Average rating (ratings column doesn't exist in shipments table)
         0 as avg_rating,
         0 as rating_count,
         
