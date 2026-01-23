@@ -1498,7 +1498,9 @@ function serveDriverStats(pin) {
             <!-- Performance Chart -->
             <div class="bg-slate-900/50 rounded-lg p-3 border border-slate-700">
               <div class="text-xs text-slate-400 mb-2">30-Day Performance</div>
-              <canvas id="chart-\${driver.id}" class="w-full" height="120"></canvas>
+              <div style="position: relative; height: 120px;">
+                <canvas id="chart-\${driver.id}"></canvas>
+              </div>
               <div id="chart-error-\${driver.id}" class="text-xs text-red-400 mt-2 hidden">Failed to load timeline data</div>
             </div>
           </div>
