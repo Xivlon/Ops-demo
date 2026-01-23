@@ -881,7 +881,6 @@ function serveDashboard(pin) {
 
   <script>
    lucide.createIcons();
-   const pin = '${pin}';
 let allShipments = [];
 let allDrivers = [];
 let sortOrder = { 1: 'desc' };
@@ -894,7 +893,7 @@ async function refreshData() {
 
 async function loadStats() {
     try {
-        const res = await fetch(`/api/neon-query?pin=${pin}`, {
+      const res = await fetch(`/api/neon-query?pin=test123`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
