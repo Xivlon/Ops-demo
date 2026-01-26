@@ -113,7 +113,7 @@ const worker: ExportedHandler<Env> = {
       try {
         body = await request.json() as DriverStatsRequestBody;
       } catch (error) {
-    const err = error as Error;
+        const err = error as Error;
         return new Response(
           JSON.stringify({ error: "Invalid JSON in request body", code: "INVALID_JSON" }),
           {
@@ -687,7 +687,7 @@ async function handleRefreshDriverStats(env: Env): Promise<Response> {
       JSON.stringify({ 
         success: true, 
         message: `Driver stats refreshed successfully`,
-        driversUpdated: parseInt(driverCount),
+        driversUpdated: Number(driverCount),
         timestamp: new Date().toISOString()
       }),
       { 
