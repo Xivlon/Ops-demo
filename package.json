@@ -2,9 +2,9 @@
   "name": "luggster-ops",
   "version": "1.0.0",
   "description": "Operations console for LuggageLink with Neon DB integration",
-  "main": "Luggster-Ops/Ops-Console.js",
+  "main": "src/index.ts",
   "scripts": {
-    "build": "echo 'No build step required'",
+    "build": "tsc --noEmit",
     "deploy": "wrangler deploy",
     "dev": "wrangler dev"
   },
@@ -12,6 +12,9 @@
     "@neondatabase/serverless": "^0.10.0"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260124.0",
+    "@types/node": "^25.0.10",
+    "typescript": "^5.9.3",
     "wrangler": "^4"
   }
 }
