@@ -377,7 +377,7 @@
             if (s.status === 'PENDING') {
                 const options = allDrivers
                     .filter(d => d.is_online)
-                    .map(d => '<option value="' + d.id + '">' + (d.name || d.email) + '</option>')
+                    .map(d => '<option value="' + d.id + '">' + (d.first_name + ' ' + d.last_name || d.email) + '</option>')
                     .join('');
                 
                 if(options) {
