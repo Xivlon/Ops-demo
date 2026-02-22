@@ -132,6 +132,4 @@ export interface LoginRequest {
   pin: string;
 }
 
-export interface RefreshStatsRequest {
-  mode?: 'cached' | 'live';
-}
+

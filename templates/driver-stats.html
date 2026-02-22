@@ -176,7 +176,7 @@
 
     async function loadDriverStats() {
       try {
-        const res = await fetch('/api/drivers/stats/live', {
+        const res = await fetch('/api/drivers/stats', {
           headers: { 'Accept': 'application/json' },
           credentials: 'include'
         });

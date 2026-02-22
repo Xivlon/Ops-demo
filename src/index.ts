@@ -158,36 +158,13 @@ const worker: ExportedHandler<Env> = {
         return jsonResponse({ success: true, data: drivers });
       }
 
-      // Driver stats (cached)
+      // Driver stats (live only - no caching)
       if (path === '/api/drivers/stats' && method === 'GET') {
-        const stats = await repos.drivers.getCachedStats();
-        return jsonResponse({ 
-          success: true, 
-          data: stats,
-          meta: { source: 'cached', timestamp: new Date().toISOString() }
-        });
-      }
-
-      // Driver stats (live)
-      if (path === '/api/drivers/stats/live' && method === 'GET') {
         const stats = await repos.drivers.getLiveStats();
         return jsonResponse({ 
           success: true, 
           data: stats,
           meta: { source: 'live', timestamp: new Date().toISOString() }
-        });
-      }
-
-      // Refresh driver stats cache
-      if (path === '/api/drivers/stats/refresh' && method === 'POST') {
-        const count = await repos.drivers.refreshStatsCache();
-        return jsonResponse({ 
-          success: true, 
-          data: { 
-            message: 'Stats refreshed successfully', 
-            driversUpdated: count,
-            timestamp: new Date().toISOString()
-          }
         });
       }
 
