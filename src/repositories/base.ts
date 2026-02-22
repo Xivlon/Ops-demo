@@ -8,6 +8,9 @@ export abstract class BaseRepository {
     try {
       const result = await client.query(sql, params);
       return result.rows as T[];
+    } catch (error) {
+      console.error('Query failed:', sql.substring(0, 100), error);
+      throw error;
     } finally {
       client.release();
     }

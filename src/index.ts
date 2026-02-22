@@ -35,10 +35,16 @@ function getPool(env: Env): Pool {
 
 const worker: ExportedHandler<Env> = {
   async fetch(request: Request, env: Env): Promise<Response> {
+    try {
     const url = new URL(request.url);
     const path = url.pathname;
     const method = request.method;
     const origin = request.headers.get('Origin');
+
+    // Simple ping endpoint - no auth, no DB
+    if (path === '/ping' && method === 'GET') {
+      return jsonResponse({ success: true, data: { message: 'pong', timestamp: new Date().toISOString() } }, 200, true, origin);
+    }
 
     // Handle CORS preflight
     if (method === 'OPTIONS') {
@@ -49,6 +55,11 @@ const worker: ExportedHandler<Env> = {
     const authResponse = await authMiddleware(request, env);
     if (authResponse) return authResponse;
 
+    // Check database URL
+    if (!env.DATABASE_URL) {
+      return errorResponse('DATABASE_URL not configured', 'DB_CONFIG_ERROR', 500);
+    }
+
     // Initialize repositories
     let repos;
     try {
@@ -56,7 +67,8 @@ const worker: ExportedHandler<Env> = {
       repos = createRepositories(pool);
     } catch (e) {
       const error = e instanceof Error ? e.message : 'Database connection failed';
-      return errorResponse(error, 'DB_CONNECTION_ERROR', 500);
+      console.error('Pool init error:', error);
+      return errorResponse('Database connection failed: ' + error, 'DB_CONNECTION_ERROR', 500);
     }
 
     try {
@@ -223,6 +235,11 @@ const worker: ExportedHandler<Env> = {
       const stack = error instanceof Error ? error.stack : '';
       console.error('Stack:', stack);
       return errorResponse(message + ' - ' + stack?.substring(0, 200), 'INTERNAL_ERROR', 500);
+    }
+    } catch (error) {
+      console.error('Worker error:', error);
+      const message = error instanceof Error ? error.message : 'Worker crashed';
+      return errorResponse('Worker error: ' + message, 'WORKER_ERROR', 500);
     }
   },
 };

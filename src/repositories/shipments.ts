@@ -76,19 +76,24 @@ export class ShipmentRepository extends BaseRepository {
   }
 
   async getDashboardStats(days = 30): Promise<DashboardStats> {
-    const sql = `
-      SELECT 
-        COUNT(*) FILTER (WHERE status = 'PENDING') as pending,
-        COUNT(*) FILTER (WHERE status = 'ASSIGNED') as assigned,
-        COUNT(*) FILTER (WHERE status = 'PICKED_UP') as picked_up,
-        COUNT(*) FILTER (WHERE status = 'DELIVERED') as delivered,
-        COALESCE(SUM(price_cents) FILTER (WHERE status = 'DELIVERED'), 0) / 100.0 as total_revenue,
-        (SELECT COUNT(*) FROM driver_profiles WHERE is_online = true) as online_drivers,
-        (SELECT COUNT(*) FROM driver_profiles) as total_drivers
-      FROM shipments 
-      WHERE created_at > NOW() - INTERVAL '${days} days'
-    `;
-    return this.queryOne<DashboardStats>(sql) as Promise<DashboardStats>;
+    try {
+      const sql = `
+        SELECT 
+          COUNT(*) FILTER (WHERE status = 'PENDING') as pending,
+          COUNT(*) FILTER (WHERE status = 'ASSIGNED') as assigned,
+          COUNT(*) FILTER (WHERE status = 'PICKED_UP') as picked_up,
+          COUNT(*) FILTER (WHERE status = 'DELIVERED') as delivered,
+          COALESCE(SUM(price_cents) FILTER (WHERE status = 'DELIVERED'), 0) / 100.0 as total_revenue,
+          (SELECT COUNT(*) FROM driver_profiles WHERE is_online = true) as online_drivers,
+          (SELECT COUNT(*) FROM driver_profiles) as total_drivers
+        FROM shipments 
+        WHERE created_at > NOW() - INTERVAL '${days} days'
+      `;
+      return this.queryOne<DashboardStats>(sql) as Promise<DashboardStats>;
+    } catch (error) {
+      console.error('Dashboard stats query failed:', error);
+      throw error;
+    }
   }
 
   async countByStatus(status: ShipmentStatus, days = 30): Promise<number> {
