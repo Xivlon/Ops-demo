@@ -202,8 +202,9 @@
 
         } catch (e) { 
             document.getElementById('status-indicator').className = "w-2 h-2 rounded-full bg-red-500";
-            document.getElementById('status-text').innerText = "Connection Error";
-            showToast("Failed to load statistics", "red");
+            document.getElementById('status-text').innerText = "Connection Error - Retrying...";
+            console.error('Stats load failed:', e);
+            // Don't clear existing data on error - keep showing old data
         }
     }
 
@@ -218,7 +219,8 @@
             const { data } = await res.json();
             allDrivers = data || [];
         } catch (e) { 
-            showToast("Failed to load drivers", "red");
+            console.error('Drivers load failed:', e);
+            // Keep existing drivers list on error
         }
     }
 
@@ -240,8 +242,9 @@
             renderTable();
 
         } catch (e) { 
-            tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-12 text-center text-red-400">Connection Error: ' + e.message + '</td></tr>';
-            showToast("Failed to load shipments", "red");
+            console.error('Shipments load failed:', e);
+            // Keep existing table data on error, just show a toast
+            showToast("Connection issue - showing cached data", "yellow");
         }
     }
 
@@ -267,6 +270,38 @@
         return '<span class="text-slate-600 text-[10px] italic">N/A</span>';
     }
 
+    // Urgency configuration
+    const urgencyConfig = {
+        'OVERDUE': { label: 'Overdue', bg: 'bg-red-500', text: 'text-red-400', border: 'border-red-500' },
+        'CRITICAL': { label: 'Critical', bg: 'bg-orange-500', text: 'text-orange-400', border: 'border-orange-500' },
+        'WARNING': { label: 'Warning', bg: 'bg-yellow-500', text: 'text-yellow-400', border: 'border-yellow-500' },
+        'NORMAL': { label: '', bg: '', text: '', border: '' },
+        'FAILED': { label: 'Failed', bg: 'bg-gray-500', text: 'text-gray-400', border: 'border-gray-500' }
+    };
+    
+    function getUrgencyPriority(urgency, status) {
+        // Only show urgency for pending/assigned orders
+        if (!['PENDING', 'ASSIGNED'].includes(status)) return 999;
+        const priority = { 'OVERDUE': 0, 'CRITICAL': 1, 'WARNING': 2, 'NORMAL': 3, 'FAILED': 4 };
+        return priority[urgency] || 999;
+    }
+    
+    function formatTimeRemaining(pickupTime) {
+        if (!pickupTime) return '';
+        const now = new Date();
+        const pickup = new Date(pickupTime);
+        const diffMs = pickup.getTime() - now.getTime();
+        const diffMinutes = Math.floor(diffMs / 60000);
+        
+        if (diffMinutes < 0) {
+            const overdue = Math.abs(diffMinutes);
+            if (overdue < 60) return overdue + 'm overdue';
+            return Math.floor(overdue / 60) + 'h overdue';
+        }
+        if (diffMinutes < 60) return diffMinutes + 'm';
+        return Math.floor(diffMinutes / 60) + 'h ' + (diffMinutes % 60) + 'm';
+    }
+
     function renderTable() {
         const tbody = document.getElementById('table-body');
         const filter = document.getElementById('statusFilter').value;
@@ -274,6 +309,11 @@
         let list = filter ? allShipments.filter(s => s.status === filter) : [...allShipments];
 
         list.sort((a, b) => {
+            // First sort by urgency priority (urgent items first)
+            const urgencyDiff = getUrgencyPriority(a.urgency, a.status) - getUrgencyPriority(b.urgency, b.status);
+            if (urgencyDiff !== 0) return urgencyDiff;
+            
+            // Then apply user-selected sort
             const colKey = currentSortedCol;
             let valA, valB;
 
@@ -305,6 +345,12 @@
 
         tbody.innerHTML = list.map(s => {
             const badgeClass = stMap[s.status] || 'bg-slate-700 text-slate-400';
+            
+            // Get urgency styling
+            const uConfig = urgencyConfig[s.urgency] || urgencyConfig['NORMAL'];
+            const showUrgency = ['PENDING', 'ASSIGNED'].includes(s.status) && s.urgency && s.urgency !== 'NORMAL';
+            const rowClass = showUrgency ? `border-l-4 ${uConfig.border}` : '';
+            const timeRemaining = s.pickup_time ? formatTimeRemaining(s.pickup_time) : '';
 
             let driverHtml = '';
             const dId = s.driver_id;
@@ -355,9 +401,20 @@
             const dateStr = d.toLocaleDateString([], {month:'short', day:'numeric'});
             const timeStr = d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
 
-            return '<tr class="hover:bg-slate-800 transition-colors border-b border-slate-700/50 group">' +
+            // Build urgency indicator
+            let urgencyHtml = '';
+            if (showUrgency) {
+                urgencyHtml = '<div class="flex items-center gap-1.5">' +
+                    '<span class="w-2 h-2 rounded-full ' + uConfig.bg + '"></span>' +
+                    '<span class="text-[10px] font-bold ' + uConfig.text + '">' + uConfig.label + '</span>' +
+                    (timeRemaining ? '<span class="text-[10px] text-slate-400">(' + timeRemaining + ')</span>' : '') +
+                    '</div>';
+            }
+            
+            return '<tr class="hover:bg-slate-800 transition-colors border-b border-slate-700/50 ' + rowClass + ' group">' +
                      '<td class="px-6 py-4 whitespace-nowrap">' +
                      '<div class="font-mono text-xs text-slate-500 group-hover:text-slate-300 transition-colors">#' + (s.id?.slice(0,8) || 'N/A') + '</div>' +
+                     (showUrgency ? urgencyHtml : '') +
                      '</td>' +
                      '<td class="px-6 py-4 whitespace-nowrap">' +
                      '<div class="text-sm font-medium text-slate-300">' + dateStr + '</div>' +
@@ -437,8 +494,41 @@
         setTimeout(() => div.remove(), 3000);
     }
 
-    refreshData();
-    setInterval(refreshData, 30000);
+    // Auto-refresh with lock to prevent race conditions
+    let isRefreshing = false;
+    let refreshInterval = null;
+    
+    async function safeRefresh() {
+        if (isRefreshing) {
+            console.log('Refresh already in progress, skipping...');
+            return;
+        }
+        isRefreshing = true;
+        try {
+            await refreshData();
+        } finally {
+            isRefreshing = false;
+        }
+    }
+    
+    function startAutoRefresh() {
+        if (refreshInterval) clearInterval(refreshInterval);
+        refreshInterval = setInterval(safeRefresh, 30000);
+    }
+    
+    // Initial load
+    safeRefresh();
+    startAutoRefresh();
+    
+    // Pause refresh when tab is hidden to prevent stale data issues
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            if (refreshInterval) clearInterval(refreshInterval);
+        } else {
+            safeRefresh(); // Refresh immediately when becoming visible
+            startAutoRefresh();
+        }
+    });
   </script>
 </body>
 </html>

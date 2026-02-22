@@ -1,6 +1,7 @@
 import type { Pool } from '@neondatabase/serverless';
 import type { Shipment, ShipmentStatus, ListShipmentsParams, DashboardStats } from '../types';
 import { BaseRepository } from './base';
+import { calculateUrgency } from '../utils/urgency';
 
 export class ShipmentRepository extends BaseRepository {
   constructor(pool: Pool) {
@@ -21,7 +22,7 @@ export class ShipmentRepository extends BaseRepository {
     const { status, limit = 100, days = 30 } = params;
     
     let sql = `
-      SELECT s.*, CONCAT(dp.first_name, ' ', dp.last_name) as driver_name
+      SELECT s.*, CONCAT(dp.first_name, ' ', dp.last_name) as driver_name, s.pickup_time
       FROM shipments s
       LEFT JOIN driver_profiles dp ON s.driver_id = dp.id
       WHERE s.created_at > NOW() - INTERVAL '${days} days'
@@ -36,10 +37,16 @@ export class ShipmentRepository extends BaseRepository {
       paramIndex++;
     }
 
-    sql += ` ORDER BY s.created_at DESC LIMIT $${paramIndex}`;
+    sql += ` ORDER BY s.pickup_time ASC NULLS LAST, s.created_at DESC LIMIT $${paramIndex}`;
     queryParams.push(limit);
 
-    return this.query<Shipment>(sql, queryParams);
+    const rows = await this.query<Shipment>(sql, queryParams);
+    
+    // Calculate urgency for each shipment
+    return rows.map(row => ({
+      ...row,
+      urgency: calculateUrgency(row.pickup_time)
+    }));
   }
 
   async assignDriver(shipmentId: string, driverId: string): Promise<boolean> {

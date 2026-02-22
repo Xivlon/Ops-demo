@@ -42,6 +42,18 @@ export interface Shipment {
   luggage_description: string | null;
   special_instructions: string | null;
   driver_name?: string | null;
+  pickup_time?: string | null;  // Scheduled pickup time
+  urgency?: UrgencyLevel;       // Calculated urgency level
+}
+
+export type UrgencyLevel = 'OVERDUE' | 'CRITICAL' | 'WARNING' | 'NORMAL' | 'FAILED';
+
+export interface UrgencyConfig {
+  level: UrgencyLevel;
+  label: string;
+  color: string;
+  bgClass: string;
+  textClass: string;
 }
 
 export type ShipmentStatus = 'PENDING' | 'ASSIGNED' | 'PICKED_UP' | 'DELIVERED' | 'CANCELLED';
