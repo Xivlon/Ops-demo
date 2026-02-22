@@ -171,7 +171,8 @@
     async function loadStats() {
         try {
             const res = await fetch('/api/dashboard/stats', {
-                headers: { 'Accept': 'application/json' }
+                headers: { 'Accept': 'application/json' },
+                credentials: 'include'
             });
             
             if (!res.ok) throw new Error('Failed to load stats');
@@ -211,7 +212,8 @@
     async function loadDrivers() {
         try {
             const res = await fetch('/api/drivers/online', {
-                headers: { 'Accept': 'application/json' }
+                headers: { 'Accept': 'application/json' },
+                credentials: 'include'
             });
             
             if (!res.ok) throw new Error('Failed to load drivers');
@@ -228,7 +230,8 @@
         const tbody = document.getElementById('table-body');
         try {
             const res = await fetch('/api/shipments', {
-                headers: { 'Accept': 'application/json' }
+                headers: { 'Accept': 'application/json' },
+                credentials: 'include'
             });
             
             if (!res.ok) throw new Error('Failed to load shipments');
@@ -466,6 +469,7 @@
             const res = await fetch('/api/shipments/' + shipmentId + '/assign', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify({ driverId })
             });
 
