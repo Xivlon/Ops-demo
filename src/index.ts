@@ -26,11 +26,8 @@ function getPool(env: Env): Pool {
     if (!env.DATABASE_URL) {
       throw new Error('DATABASE_URL not configured');
     }
-    // Create pool with optimized settings for serverless
     pool = new Pool({ 
       connectionString: env.DATABASE_URL,
-      // Neon serverless handles pooling efficiently
-      // max: 10, // Max connections (default is usually fine)
     });
   }
   return pool;
@@ -41,17 +38,18 @@ const worker: ExportedHandler<Env> = {
     const url = new URL(request.url);
     const path = url.pathname;
     const method = request.method;
+    const origin = request.headers.get('Origin');
 
     // Handle CORS preflight
     if (method === 'OPTIONS') {
-      return corsPreflightResponse();
+      return corsPreflightResponse(origin);
     }
 
-    // Auth middleware (returns null if authenticated, Response if not)
+    // Auth middleware
     const authResponse = await authMiddleware(request, env);
     if (authResponse) return authResponse;
 
-    // Initialize repositories with connection pool
+    // Initialize repositories
     let repos;
     try {
       const pool = getPool(env);
@@ -62,19 +60,17 @@ const worker: ExportedHandler<Env> = {
     }
 
     try {
-      // === API Routes ===
-
-      // Health check / test connection
+      // Health check
       if (path === '/test' && method === 'GET') {
         const start = Date.now();
         const result = await repos.shipments.getDashboardStats(1);
         return jsonResponse({
           success: true,
           data: { connected: true, latencyMs: Date.now() - start, stats: result },
-        });
+        }, 200, true, origin);
       }
 
-      // Login endpoint
+      // Login
       if (path === '/api/login' && method === 'POST') {
         const body = await request.json() as LoginRequest;
         
@@ -87,22 +83,23 @@ const worker: ExportedHandler<Env> = {
         const response = jsonResponse(
           { success: true, data: { message: 'Login successful' } },
           200,
-          true
+          true,
+          origin
         );
         
-        // Set JWT cookie on successful login
         const expiryHours = parseInt(env.JWT_EXPIRY_HOURS || '24', 10);
         response.headers.set('Set-Cookie', `token=${jwt}; HttpOnly; Secure; SameSite=Strict; Max-Age=${expiryHours * 3600}; Path=/`);
         
         return response;
       }
 
-      // Logout endpoint
+      // Logout
       if (path === '/api/logout' && method === 'POST') {
         const response = jsonResponse(
           { success: true, data: { message: 'Logout successful' } },
           200,
-          true
+          true,
+          origin
         );
         response.headers.set('Set-Cookie', clearJWTCookie());
         return response;
@@ -111,10 +108,10 @@ const worker: ExportedHandler<Env> = {
       // Dashboard stats
       if (path === '/api/dashboard/stats' && method === 'GET') {
         const stats = await repos.shipments.getDashboardStats();
-        return jsonResponse({ success: true, data: stats });
+        return jsonResponse({ success: true, data: stats }, 200, true, origin);
       }
 
-      // Shipments API
+      // Shipments list
       if (path === '/api/shipments' && method === 'GET') {
         const status = url.searchParams.get('status') as any;
         const limit = parseInt(url.searchParams.get('limit') || '100', 10);
@@ -125,10 +122,10 @@ const worker: ExportedHandler<Env> = {
           limit, 
           days 
         });
-        return jsonResponse({ success: true, data: shipments });
+        return jsonResponse({ success: true, data: shipments }, 200, true, origin);
       }
 
-      // Assign driver to shipment
+      // Assign driver
       const assignMatch = path.match(/^\/api\/shipments\/([^/]+)\/assign$/);
       if (assignMatch && method === 'POST') {
         const shipmentId = assignMatch[1];
@@ -141,36 +138,35 @@ const worker: ExportedHandler<Env> = {
         const success = await repos.shipments.assignDriver(shipmentId, body.driverId);
         
         if (!success) {
-          return errorResponse('Failed to assign driver - shipment may not be in PENDING status', 'ASSIGN_FAILED', 400);
+          return errorResponse('Failed to assign driver', 'ASSIGN_FAILED', 400);
         }
 
-        return jsonResponse({ success: true, data: { message: 'Driver assigned successfully' } });
+        return jsonResponse({ success: true, data: { message: 'Driver assigned' } }, 200, true, origin);
       }
 
-      // Drivers API
+      // Drivers
       if (path === '/api/drivers' && method === 'GET') {
         const drivers = await repos.drivers.listAll();
-        return jsonResponse({ success: true, data: drivers });
+        return jsonResponse({ success: true, data: drivers }, 200, true, origin);
       }
 
       if (path === '/api/drivers/online' && method === 'GET') {
         const drivers = await repos.drivers.listOnline();
-        return jsonResponse({ success: true, data: drivers });
+        return jsonResponse({ success: true, data: drivers }, 200, true, origin);
       }
 
-      // Driver stats (live only - no caching)
+      // Driver stats (live only)
       if (path === '/api/drivers/stats' && method === 'GET') {
         const stats = await repos.drivers.getLiveStats();
         return jsonResponse({ 
           success: true, 
           data: stats,
           meta: { source: 'live', timestamp: new Date().toISOString() }
-        });
+        }, 200, true, origin);
       }
 
-      // Legacy query endpoint (for backwards compatibility during migration)
+      // Legacy query endpoint
       if (path === '/api/neon-query' && method === 'POST') {
-        // Only allow if legacy PIN is provided
         const pin = url.searchParams.get('pin');
         if (pin !== env.ADMIN_PIN) {
           return unauthorizedResponse();
@@ -179,13 +175,12 @@ const worker: ExportedHandler<Env> = {
         const body = await request.json() as { query: string; params?: unknown[] };
         
         if (!body.query) {
-          return errorResponse('Query is required', 'MISSING_QUERY', 400);
+          return errorResponse('Query required', 'MISSING_QUERY', 400);
         }
 
-        // Validate query type (security check)
         const normalizedQuery = body.query.trim().toUpperCase();
         if (!normalizedQuery.startsWith('SELECT') && !normalizedQuery.startsWith('UPDATE')) {
-          return errorResponse('Only SELECT and UPDATE queries are allowed', 'INVALID_QUERY_TYPE', 400);
+          return errorResponse('Only SELECT/UPDATE allowed', 'INVALID_QUERY', 400);
         }
 
         const client = await getPool(env).connect();
@@ -194,16 +189,14 @@ const worker: ExportedHandler<Env> = {
           return jsonResponse({ 
             success: true, 
             data: { rows: result.rows, rowCount: result.rowCount }
-          });
+          }, 200, true, origin);
         } finally {
           client.release();
         }
       }
 
-      // === HTML Routes ===
-
+      // HTML Routes
       if (path === '/login' && method === 'GET') {
-        // If already authenticated, redirect to dashboard
         const token = extractJWT(request);
         if (token) {
           const payload = await verifyJWT(token, env);
@@ -222,12 +215,11 @@ const worker: ExportedHandler<Env> = {
         return htmlResponse(DRIVER_STATS_HTML);
       }
 
-      // 404 Not Found
       return errorResponse('Not Found', 'NOT_FOUND', 404);
 
     } catch (error) {
       console.error('Request error:', error);
-      const message = error instanceof Error ? error.message : 'Internal server error';
+      const message = error instanceof Error ? error.message : 'Internal error';
       return errorResponse(message, 'INTERNAL_ERROR', 500);
     }
   },

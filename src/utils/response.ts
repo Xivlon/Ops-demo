@@ -1,14 +1,17 @@
 import type { ApiResponse } from '../types';
 
-export function jsonResponse<T>(data: ApiResponse<T>, status = 200, cors = true): Response {
+export function jsonResponse<T>(data: ApiResponse<T>, status = 200, cors = true, requestOrigin: string | null = null): Response {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
   
   if (cors) {
-    headers['Access-Control-Allow-Origin'] = '*';
+    // Must specify exact origin when using credentials (can't use *)
+    // If no origin provided, use * (but credentials won't work)
+    headers['Access-Control-Allow-Origin'] = requestOrigin || '*';
     headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS';
     headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization';
+    headers['Access-Control-Allow-Credentials'] = 'true';
   }
 
   return new Response(JSON.stringify(data), { status, headers });
@@ -32,13 +35,14 @@ export function unauthorizedResponse(): Response {
   return errorResponse('Unauthorized', 'UNAUTHORIZED', 401);
 }
 
-export function corsPreflightResponse(): Response {
+export function corsPreflightResponse(requestOrigin?: string | null): Response {
   return new Response(null, {
     status: 204,
     headers: {
-      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Origin': requestOrigin || '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Credentials': 'true',
       'Access-Control-Max-Age': '86400',
     },
   });
