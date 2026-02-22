@@ -220,7 +220,9 @@ const worker: ExportedHandler<Env> = {
     } catch (error) {
       console.error('Request error:', error);
       const message = error instanceof Error ? error.message : 'Internal error';
-      return errorResponse(message, 'INTERNAL_ERROR', 500);
+      const stack = error instanceof Error ? error.stack : '';
+      console.error('Stack:', stack);
+      return errorResponse(message + ' - ' + stack?.substring(0, 200), 'INTERNAL_ERROR', 500);
     }
   },
 };

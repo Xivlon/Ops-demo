@@ -289,11 +289,11 @@
         return priority[urgency] || 999;
     }
     
-    function formatTimeRemaining(pickupTime) {
-        if (!pickupTime) return '';
+    function formatTimeRemaining(targetTime) {
+        if (!targetTime) return '';
         const now = new Date();
-        const pickup = new Date(pickupTime);
-        const diffMs = pickup.getTime() - now.getTime();
+        const target = new Date(targetTime);
+        const diffMs = target.getTime() - now.getTime();
         const diffMinutes = Math.floor(diffMs / 60000);
         
         if (diffMinutes < 0) {
@@ -353,7 +353,7 @@
             const uConfig = urgencyConfig[s.urgency] || urgencyConfig['NORMAL'];
             const showUrgency = ['PENDING', 'ASSIGNED'].includes(s.status) && s.urgency && s.urgency !== 'NORMAL';
             const rowClass = showUrgency ? `border-l-4 ${uConfig.border}` : '';
-            const timeRemaining = s.pickup_time ? formatTimeRemaining(s.pickup_time) : '';
+            const timeRemaining = s.pickup_at ? formatTimeRemaining(s.pickup_at) : '';
 
             let driverHtml = '';
             const dId = s.driver_id;

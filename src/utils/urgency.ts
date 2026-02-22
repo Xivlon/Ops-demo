@@ -1,10 +1,10 @@
 import type { UrgencyLevel, UrgencyConfig } from '../types';
 
-export function calculateUrgency(pickupTime: string | null | undefined): UrgencyLevel {
-  if (!pickupTime) return 'NORMAL';
+export function calculatePickupUrgency(pickupAt: string | null | undefined): UrgencyLevel {
+  if (!pickupAt) return 'NORMAL';
   
   const now = new Date();
-  const pickup = new Date(pickupTime);
+  const pickup = new Date(pickupAt);
   const diffMs = pickup.getTime() - now.getTime();
   const diffMinutes = Math.floor(diffMs / 60000);
   const diffHours = diffMs / 3600000;
@@ -19,6 +19,30 @@ export function calculateUrgency(pickupTime: string | null | undefined): Urgency
   if (diffMinutes <= 10) return 'CRITICAL';
   
   // Warning: pickup within 30 minutes
+  if (diffMinutes <= 30) return 'WARNING';
+  
+  return 'NORMAL';
+}
+
+export function calculateDropoffUrgency(dropoffBy: string | null | undefined): UrgencyLevel {
+  if (!dropoffBy) return 'NORMAL';
+  
+  const now = new Date();
+  const dropoff = new Date(dropoffBy);
+  const diffMs = dropoff.getTime() - now.getTime();
+  const diffMinutes = Math.floor(diffMs / 60000);
+  const diffHours = diffMs / 3600000;
+  
+  // Failed: dropoff time exceeded 1 hour ago
+  if (diffHours < -1) return 'FAILED';
+  
+  // Overdue: dropoff time has passed (within last hour)
+  if (diffMinutes <= 0) return 'OVERDUE';
+  
+  // Critical: dropoff within 10 minutes
+  if (diffMinutes <= 10) return 'CRITICAL';
+  
+  // Warning: dropoff within 30 minutes
   if (diffMinutes <= 30) return 'WARNING';
   
   return 'NORMAL';
@@ -66,12 +90,12 @@ export function getUrgencyConfig(level: UrgencyLevel): UrgencyConfig {
   return configs[level];
 }
 
-export function formatTimeRemaining(pickupTime: string | null | undefined): string {
-  if (!pickupTime) return '';
+export function formatTimeRemaining(targetTime: string | null | undefined): string {
+  if (!targetTime) return '';
   
   const now = new Date();
-  const pickup = new Date(pickupTime);
-  const diffMs = pickup.getTime() - now.getTime();
+  const target = new Date(targetTime);
+  const diffMs = target.getTime() - now.getTime();
   const diffMinutes = Math.floor(diffMs / 60000);
   const diffHours = Math.floor(diffMs / 3600000);
   

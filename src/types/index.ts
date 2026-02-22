@@ -42,7 +42,8 @@ export interface Shipment {
   luggage_description: string | null;
   special_instructions: string | null;
   driver_name?: string | null;
-  pickup_time?: string | null;  // Scheduled pickup time
+  pickup_at?: string | null;    // Scheduled pickup time
+  dropoff_by?: string | null;   // Scheduled dropoff time
   urgency?: UrgencyLevel;       // Calculated urgency level
 }
 
