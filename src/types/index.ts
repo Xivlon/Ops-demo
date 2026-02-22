@@ -23,86 +23,92 @@ export interface ApiResponse<T = unknown> {
   meta?: Record<string, unknown>;
 }
 
-// Shipment types
+// Shipment types - matching Neon schema
 export interface Shipment {
   id: string;
-  created_at: string;
-  status: ShipmentStatus;
+  customer_id: string;
   driver_id: string | null;
-  origin_airport: string;
-  destination_airport: string;
+  luggage_id: string | null;
+  status: ShipmentStatus;
+  origin_airport: string | null;
+  destination_airport: string | null;
   pickup_address: string | null;
+  pickup_latitude: number | null;
+  pickup_longitude: number | null;
+  pickup_at: string;  // NOT NULL - timestamp with time zone
+  pickup_contact_name: string | null;
+  pickup_contact_phone: string | null;
   dropoff_address: string | null;
+  dropoff_latitude: number | null;
+  dropoff_longitude: number | null;
+  dropoff_by: string;  // NOT NULL - timestamp with time zone
+  dropoff_contact_name: string | null;
+  dropoff_contact_phone: string | null;
+  distance_miles: number | null;
+  price_cents: number;
+  currency: string | null;
+  notes: string | null;
   pickup_photo_url: string | null;
   delivery_photo_url: string | null;
-  price_cents: number;
+  signature_url: string | null;
+  claimed_at: string | null;
+  picked_up_at: string | null;
+  delivered_at: string | null;
+  created_at: string;
+  updated_at: string;
   customer_name: string | null;
   customer_email: string | null;
   customer_phone: string | null;
   luggage_description: string | null;
+  promo_code: string | null;
   special_instructions: string | null;
+  // Joined fields
   driver_name?: string | null;
-  pickup_at?: string | null;    // Scheduled pickup time
-  dropoff_by?: string | null;   // Scheduled dropoff time
-  urgency?: UrgencyLevel;       // Calculated urgency level
-}
-
-export type UrgencyLevel = 'OVERDUE' | 'CRITICAL' | 'WARNING' | 'NORMAL' | 'FAILED';
-
-export interface UrgencyConfig {
-  level: UrgencyLevel;
-  label: string;
-  color: string;
-  bgClass: string;
-  textClass: string;
+  urgency?: UrgencyLevel;
 }
 
 export type ShipmentStatus = 'PENDING' | 'ASSIGNED' | 'PICKED_UP' | 'DELIVERED' | 'CANCELLED';
 
-// Driver types
+// Driver types - matching Neon schema
 export interface Driver {
   id: string;
   email: string;
-  first_name: string | null;
-  last_name: string | null;
+  first_name: string;
+  last_name: string;
   is_online: boolean;
-  user_type: 'driver';
+  user_type: string;
+  phone: string | null;
+  username: string | null;
+  current_latitude: number | null;
+  current_longitude: number | null;
+  vehicle_type: string | null;
+  vehicle_plate: string | null;
+  rating: number | null;
+  total_deliveries: number;
+  profile_photo_url: string | null;
   account_created_at: string;
   account_updated_at: string;
 }
 
 export interface DriverStats {
   id: string;
-  first_name: string | null;
-  last_name: string | null;
-  email: string | null;
+  email: string;
+  first_name: string;
+  last_name: string;
   is_online: boolean;
-  driver_joined: string | null;
+  phone: string | null;
+  account_created_at: string;
   total_assigned: number;
   pending_count: number;
   assigned_count: number;
   in_transit_count: number;
   total_completed: number;
   cancelled_count: number;
-  failed_count: number;
-  total_failed: number;
-  week_completed: number;
-  week_failed: number;
-  month_completed: number;
-  month_failed: number;
   total_revenue: number;
-  week_revenue: number;
-  month_revenue: number;
-  last_active: string | null;
+  week_completed: number;
+  month_completed: number;
   success_rate: number | null;
-  cancel_rate: number | null;
-  week_success_rate: number | null;
-  week_cancel_rate: number | null;
-  month_success_rate: number | null;
-  month_cancel_rate: number | null;
   avg_rating: number;
-  rating_count: number;
-  stats_updated_at: string;
 }
 
 // Dashboard stats
@@ -114,6 +120,17 @@ export interface DashboardStats {
   total_revenue: number;
   online_drivers: number;
   total_drivers: number;
+}
+
+// Urgency types
+export type UrgencyLevel = 'OVERDUE' | 'CRITICAL' | 'WARNING' | 'NORMAL' | 'FAILED';
+
+export interface UrgencyConfig {
+  level: UrgencyLevel;
+  label: string;
+  color: string;
+  bgClass: string;
+  textClass: string;
 }
 
 // Query parameters
@@ -132,5 +149,3 @@ export interface AssignDriverParams {
 export interface LoginRequest {
   pin: string;
 }
-
-

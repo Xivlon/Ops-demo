@@ -10,9 +10,9 @@ export class ShipmentRepository extends BaseRepository {
 
   async findById(id: string): Promise<Shipment | null> {
     const sql = `
-      SELECT s.*, CONCAT(dp.first_name, ' ', dp.last_name) as driver_name
+      SELECT s.*, CONCAT(d.first_name, ' ', d.last_name) as driver_name
       FROM shipments s
-      LEFT JOIN driver_profiles dp ON s.driver_id = dp.id
+      LEFT JOIN driver_profiles d ON s.driver_id = d.id
       WHERE s.id = $1
     `;
     return this.queryOne<Shipment>(sql, [id]);
@@ -22,9 +22,9 @@ export class ShipmentRepository extends BaseRepository {
     const { status, limit = 100, days = 30 } = params;
     
     let sql = `
-      SELECT s.*, CONCAT(dp.first_name, ' ', dp.last_name) as driver_name, s.pickup_at, s.dropoff_by
+      SELECT s.*, CONCAT(d.first_name, ' ', d.last_name) as driver_name
       FROM shipments s
-      LEFT JOIN driver_profiles dp ON s.driver_id = dp.id
+      LEFT JOIN driver_profiles d ON s.driver_id = d.id
       WHERE s.created_at > NOW() - INTERVAL '${days} days'
     `;
     
@@ -37,6 +37,7 @@ export class ShipmentRepository extends BaseRepository {
       paramIndex++;
     }
 
+    // Sort by pickup time urgency (soonest first), then by creation date
     sql += ` ORDER BY s.pickup_at ASC NULLS LAST, s.created_at DESC LIMIT $${paramIndex}`;
     queryParams.push(limit);
 
@@ -81,9 +82,9 @@ export class ShipmentRepository extends BaseRepository {
         COUNT(*) FILTER (WHERE status = 'ASSIGNED') as assigned,
         COUNT(*) FILTER (WHERE status = 'PICKED_UP') as picked_up,
         COUNT(*) FILTER (WHERE status = 'DELIVERED') as delivered,
-        COALESCE(SUM(price_cents), 0) / 100.0 as total_revenue,
-        (SELECT COUNT(*) FROM driver_profiles WHERE is_online = true AND user_type = 'driver') as online_drivers,
-        (SELECT COUNT(*) FROM driver_profiles WHERE user_type = 'driver') as total_drivers
+        COALESCE(SUM(price_cents) FILTER (WHERE status = 'DELIVERED'), 0) / 100.0 as total_revenue,
+        (SELECT COUNT(*) FROM driver_profiles WHERE is_online = true) as online_drivers,
+        (SELECT COUNT(*) FROM driver_profiles) as total_drivers
       FROM shipments 
       WHERE created_at > NOW() - INTERVAL '${days} days'
     `;
