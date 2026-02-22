@@ -14,7 +14,7 @@ export class DriverRepository extends BaseRepository {
 
   async listOnline(): Promise<Driver[]> {
     const sql = `
-      SELECT id, email, first_name, last_name, is_online, phone, rating, total_deliveries
+      SELECT id, email, first_name, last_name, is_online, phone
       FROM driver_profiles 
       WHERE is_online = true
       ORDER BY first_name ASC

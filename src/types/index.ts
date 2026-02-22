@@ -76,18 +76,18 @@ export interface Driver {
   first_name: string;
   last_name: string;
   is_online: boolean;
-  user_type: string;
+  user_type?: string;
   phone: string | null;
-  username: string | null;
-  current_latitude: number | null;
-  current_longitude: number | null;
-  vehicle_type: string | null;
-  vehicle_plate: string | null;
-  rating: number | null;
-  total_deliveries: number;
-  profile_photo_url: string | null;
-  account_created_at: string;
-  account_updated_at: string;
+  username?: string | null;
+  current_latitude?: number | null;
+  current_longitude?: number | null;
+  vehicle_type?: string | null;
+  vehicle_plate?: string | null;
+  rating?: number | null;
+  total_deliveries?: number;
+  profile_photo_url?: string | null;
+  account_created_at?: string;
+  account_updated_at?: string;
 }
 
 export interface DriverStats {
