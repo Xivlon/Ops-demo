@@ -1,85 +1,127 @@
-import type { Pool } from '@neondatabase/serverless';
-import type { Driver, DriverStats } from '../types';
 import { BaseRepository } from './base';
+import type { Driver, DriverStats } from '../types';
 
-export class DriverRepository extends BaseRepository {
-  constructor(pool: Pool) {
-    super(pool);
-  }
+export class DriverRepository {
+  constructor(private baseRepo: BaseRepository) {}
 
-  async findById(id: string): Promise<Driver | null> {
-    const sql = `SELECT * FROM driver_profiles WHERE id = $1`;
-    return this.queryOne<Driver>(sql, [id]);
+  async listAll(): Promise<Driver[]> {
+    const query = `
+      SELECT 
+        id,
+        first_name,
+        last_name,
+        email,
+        phone,
+        is_online,
+        current_latitude,
+        current_longitude,
+        vehicle_type,
+        vehicle_plate,
+        rating,
+        total_deliveries,
+        account_created_at as created_at
+      FROM driver_profiles 
+      ORDER BY first_name, last_name
+    `;
+    
+    const result = await this.baseRepo.query<Driver>(query);
+    return result.rows;
   }
 
   async listOnline(): Promise<Driver[]> {
-    const sql = `
-      SELECT id, email, first_name, last_name, is_online, phone
+    const query = `
+      SELECT 
+        id,
+        first_name,
+        last_name,
+        email,
+        phone,
+        is_online,
+        current_latitude,
+        current_longitude,
+        vehicle_type,
+        vehicle_plate,
+        rating,
+        total_deliveries,
+        account_created_at as created_at
       FROM driver_profiles 
       WHERE is_online = true
-      ORDER BY first_name ASC
-    `;
-    return this.query<Driver>(sql);
-  }
-
-  async listAll(): Promise<Driver[]> {
-    const sql = `
-      SELECT * FROM driver_profiles
       ORDER BY first_name, last_name
     `;
-    return this.query<Driver>(sql);
+    
+    const result = await this.baseRepo.query<Driver>(query);
+    return result.rows;
   }
 
-  async countOnline(): Promise<number> {
-    const sql = `SELECT COUNT(*) as count FROM driver_profiles WHERE is_online = true`;
-    const result = await this.query<{ count: string }>(sql);
-    return parseInt(result[0]?.count || '0', 10);
-  }
-
-  async countTotal(): Promise<number> {
-    const sql = `SELECT COUNT(*) as count FROM driver_profiles`;
-    const result = await this.query<{ count: string }>(sql);
-    return parseInt(result[0]?.count || '0', 10);
-  }
-
-  // Live driver stats query
-  async getLiveStats(): Promise<DriverStats[]> {
-    const sql = `
-      SELECT 
-        d.id,
-        d.email,
-        d.first_name,
-        d.last_name,
-        d.is_online,
-        d.phone,
-        d.account_created_at,
-        d.rating as avg_rating,
-        
-        COUNT(s.id) as total_assigned,
-        
-        COUNT(*) FILTER (WHERE s.status = 'PENDING') as pending_count,
-        COUNT(*) FILTER (WHERE s.status = 'ASSIGNED') as assigned_count,
-        COUNT(*) FILTER (WHERE s.status = 'PICKED_UP') as in_transit_count,
-        COUNT(*) FILTER (WHERE s.status = 'DELIVERED') as total_completed,
-        COUNT(*) FILTER (WHERE s.status = 'CANCELLED') as cancelled_count,
-        
-        COUNT(*) FILTER (WHERE s.status = 'DELIVERED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '7 days') as week_completed,
-        COUNT(*) FILTER (WHERE s.status = 'DELIVERED' AND COALESCE(s.delivered_at, s.updated_at) > NOW() - INTERVAL '30 days') as month_completed,
-        
-        COALESCE(SUM(s.price_cents) FILTER (WHERE s.status = 'DELIVERED'), 0) / 100.0 as total_revenue,
-        
-        CASE 
-          WHEN COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED')) > 0
-          THEN (COUNT(*) FILTER (WHERE s.status = 'DELIVERED')::float / 
-                COUNT(*) FILTER (WHERE s.status IN ('DELIVERED', 'CANCELLED'))::float * 100)
-          ELSE NULL
-        END as success_rate
-
-      FROM driver_profiles d
-      LEFT JOIN shipments s ON s.driver_id = d.id
-      GROUP BY d.id, d.email, d.first_name, d.last_name, d.is_online, d.phone, d.account_created_at, d.rating
-      ORDER BY COUNT(*) FILTER (WHERE s.status = 'DELIVERED') DESC
+  async getLiveStats(): Promise<DriverStats> {
+    // Get total drivers
+    const totalQuery = `
+      SELECT COUNT(*) as count
+      FROM driver_profiles
     `;
-    return this.query<DriverStats>(sql);
+    
+    // Get online drivers
+    const onlineQuery = `
+      SELECT COUNT(*) as count
+      FROM driver_profiles 
+      WHERE is_online = true
+    `;
+    
+    // Get driver with most deliveries
+    const topDriverQuery = `
+      SELECT 
+        id,
+        first_name,
+        last_name,
+        total_deliveries
+      FROM driver_profiles 
+      ORDER BY total_deliveries DESC
+      LIMIT 1
+    `;
+    
+    const [totalResult, onlineResult, topDriverResult] = await Promise.all([
+      this.baseRepo.query<{ count: string }>(totalQuery),
+      this.baseRepo.query<{ count: string }>(onlineQuery),
+      this.baseRepo.query<any>(topDriverQuery),
+    ]);
+    
+    const total = parseInt(totalResult.rows[0]?.count || '0', 10);
+    const online = parseInt(onlineResult.rows[0]?.count || '0', 10);
+    const topDriver = topDriverResult.rows[0];
+    
+    return {
+      total,
+      online,
+      offline: total - online,
+      topDriver: topDriver ? {
+        id: topDriver.id,
+        name: `${topDriver.first_name} ${topDriver.last_name}`,
+        deliveries: topDriver.total_deliveries || 0
+      } : null
+    };
+  }
+
+  async findById(id: string): Promise<Driver | null> {
+    const query = `
+      SELECT 
+        id,
+        first_name,
+        last_name,
+        email,
+        phone,
+        is_online,
+        current_latitude,
+        current_longitude,
+        vehicle_type,
+        vehicle_plate,
+        rating,
+        total_deliveries,
+        account_created_at as created_at
+      FROM driver_profiles 
+      WHERE id = $1
+    `;
+    
+    const result = await this.baseRepo.query<Driver>(query, [id]);
+    return result.rows[0] || null;
   }
 }
