@@ -19,11 +19,9 @@ import {
 } from './generated/html-templates';
 
 // Configuration for driver stats worker
-// Use localhost for development, production URL for deployment
-const IS_DEVELOPMENT = process.env.NODE_ENV === 'development' || process.env.LOCAL_DEV === 'true';
-const DRIVER_STATS_WORKER_URL = IS_DEVELOPMENT 
-  ? 'http://localhost:8788' 
-  : 'https://driver-stats.luggster.workers.dev';
+// For production, use the production URL. For local development, we'll detect it differently.
+// In Cloudflare Workers, we can't use process.env, so we'll use a different approach.
+const DRIVER_STATS_WORKER_URL = 'https://driver-stats.luggster.workers.dev';
 const USE_DRIVER_STATS_WORKER = true; // Set to false to use direct queries
 const DRIVER_STATS_TIMEOUT_MS = 10000; // 10 second timeout for proxy requests
 
@@ -137,8 +135,7 @@ const worker: ExportedHandler<Env> = {
             connected: isConnected,
             message: 'Database connection OK',
             driverStatsWorkerEnabled: USE_DRIVER_STATS_WORKER,
-            driverStatsWorkerUrl: DRIVER_STATS_WORKER_URL,
-            isDevelopment: IS_DEVELOPMENT
+            driverStatsWorkerUrl: DRIVER_STATS_WORKER_URL
           }
         }, 200, true, origin);
       } catch (error) {
