@@ -1,0 +1,23 @@
+{
+  "name": "@luggster/main-worker",
+  "version": "2.0.0",
+  "description": "Main operations console for LuggageLink",
+  "main": "src/index.ts",
+  "type": "module",
+  "scripts": {
+    "build": "npm run build:html",
+    "build:html": "node ../../scripts/build-html-new.ts",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^0.10.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260124.0",
+    "@types/node": "^25.0.10",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.67.0"
+  }
+}
