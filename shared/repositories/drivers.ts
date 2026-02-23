@@ -156,21 +156,21 @@ export class DriverRepository extends BaseRepository {
         dp.rating as avg_rating,
         dp.total_deliveries,
         dp.account_created_at as driver_joined,
-        dp.last_active_at as last_active,
+        dp.account_updated_at as last_active,
         -- Count shipments by status
         COUNT(DISTINCT CASE WHEN s.status = 'PENDING' THEN s.id END) as pending_count,
         COUNT(DISTINCT CASE WHEN s.status = 'ASSIGNED' THEN s.id END) as assigned_count,
         COUNT(DISTINCT CASE WHEN s.status = 'PICKED_UP' THEN s.id END) in_transit_count,
         COUNT(DISTINCT CASE WHEN s.status = 'DELIVERED' THEN s.id END) as total_completed,
         COUNT(DISTINCT s.id) as total_assigned,
-        -- Revenue (sum of order totals for delivered shipments)
-        COALESCE(SUM(CASE WHEN s.status = 'DELIVERED' THEN o.total ELSE 0 END), 0) as total_revenue,
+        -- Revenue (sum of shipment prices for delivered shipments, converting cents to dollars)
+        COALESCE(SUM(CASE WHEN s.status = 'DELIVERED' THEN s.price_cents ELSE 0 END), 0) / 100.0 as total_revenue,
         -- Weekly stats (last 7 days)
         COUNT(DISTINCT CASE WHEN s.status = 'DELIVERED' AND s.updated_at > NOW() - INTERVAL '7 days' THEN s.id END) as week_completed,
-        SUM(CASE WHEN s.status = 'DELIVERED' AND s.updated_at > NOW() - INTERVAL '7 days' THEN o.total ELSE 0 END) as week_revenue,
+        COALESCE(SUM(CASE WHEN s.status = 'DELIVERED' AND s.updated_at > NOW() - INTERVAL '7 days' THEN s.price_cents ELSE 0 END), 0) / 100.0 as week_revenue,
         -- Monthly stats (last 30 days)
         COUNT(DISTINCT CASE WHEN s.status = 'DELIVERED' AND s.updated_at > NOW() - INTERVAL '30 days' THEN s.id END) as month_completed,
-        SUM(CASE WHEN s.status = 'DELIVERED' AND s.updated_at > NOW() - INTERVAL '30 days' THEN o.total ELSE 0 END) as month_revenue,
+        COALESCE(SUM(CASE WHEN s.status = 'DELIVERED' AND s.updated_at > NOW() - INTERVAL '30 days' THEN s.price_cents ELSE 0 END), 0) / 100.0 as month_revenue,
         -- Cancelled count (all time)
         COUNT(DISTINCT CASE WHEN s.status = 'CANCELLED' THEN s.id END) as cancelled_count,
         -- Weekly cancelled (last 7 days)
@@ -179,8 +179,7 @@ export class DriverRepository extends BaseRepository {
         COUNT(DISTINCT CASE WHEN s.status = 'CANCELLED' AND s.updated_at > NOW() - INTERVAL '30 days' THEN s.id END) as month_cancelled_count
       FROM driver_profiles dp
       LEFT JOIN shipments s ON s.driver_id = dp.id
-      LEFT JOIN orders o ON o.id = s.order_id
-      GROUP BY dp.id, dp.first_name, dp.last_name, dp.email, dp.phone, dp.is_online, dp.rating, dp.total_deliveries, dp.account_created_at, dp.last_active_at
+      GROUP BY dp.id, dp.first_name, dp.last_name, dp.email, dp.phone, dp.is_online, dp.rating, dp.total_deliveries, dp.account_created_at, dp.account_updated_at
       ORDER BY dp.first_name, dp.last_name
     `;
     
