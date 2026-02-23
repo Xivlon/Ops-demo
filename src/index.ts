@@ -113,8 +113,7 @@ const worker: ExportedHandler<Env> = {
       } catch (error) {
         return jsonResponse({ 
           success: false, 
-          error: 'Database connection failed',
-          details: error instanceof Error ? error.message : 'Unknown error'
+          error: 'Database connection failed'
         }, 503, true, origin);
       }
     }
