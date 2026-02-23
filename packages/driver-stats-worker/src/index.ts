@@ -52,6 +52,32 @@ const worker: ExportedHandler<Env> = {
       });
     }
 
+    // Root endpoint - API documentation
+    if (path === '/' && method === 'GET') {
+      return new Response(JSON.stringify({
+        success: true,
+        data: {
+          worker: 'driver-stats',
+          description: 'Driver statistics microservice for Luggster Ops',
+          endpoints: [
+            { path: '/ping', method: 'GET', description: 'Simple health ping' },
+            { path: '/health', method: 'GET', description: 'Health check with DB connection test' },
+            { path: '/api/drivers', method: 'GET', description: 'List all drivers with stats' },
+            { path: '/api/drivers/online', method: 'GET', description: 'List only online drivers' },
+            { path: '/api/drivers/stats/live', method: 'GET', description: 'Live driver statistics' },
+            { path: '/api/drivers/stats/enhanced', method: 'GET', description: 'Enhanced driver statistics with details' },
+          ]
+        },
+        meta: { timestamp: new Date().toISOString() }
+      }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': origin || '*',
+        },
+      });
+    }
+
     // Simple ping endpoint
     if (path === '/ping' && method === 'GET') {
       return new Response(JSON.stringify({ 
