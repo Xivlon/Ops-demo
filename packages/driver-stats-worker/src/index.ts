@@ -156,9 +156,9 @@ const worker: ExportedHandler<Env> = {
     }
 
     try {
-      // Live driver stats (no caching)
+      // Live driver stats (detailed per-driver stats for driver stats page)
       if (path === '/api/drivers/stats/live' && method === 'GET') {
-        const stats = await repos.drivers.getLiveStats();
+        const stats = await repos.drivers.getDriverDetailedStats();
         await pool.end(); // Close pool after request
         
         return new Response(JSON.stringify({
@@ -166,7 +166,8 @@ const worker: ExportedHandler<Env> = {
           data: stats,
           meta: { 
             source: 'driver-stats-worker', 
-            timestamp: new Date().toISOString() 
+            timestamp: new Date().toISOString(),
+            count: stats.length
           }
         }), {
           status: 200,
