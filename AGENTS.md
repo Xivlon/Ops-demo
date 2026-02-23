@@ -187,7 +187,7 @@ Benefits:
 2. **ADMIN_PIN**: Change from default in production
 3. **CORS**: Currently allows all origins (`*`) - restrict in production
 4. **Rate Limiting**: Consider adding Cloudflare Rate Limiting rules
-5. **Query Safety**: Repository layer uses prepared statements
+5. **Query Safety**: Repository layer  uses prepared statements
 
 ## Testing TypeScript
 
