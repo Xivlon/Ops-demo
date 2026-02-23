@@ -31,8 +31,8 @@ export function errorResponse(message: string, code: string, status = 400): Resp
   return jsonResponse({ success: false, error: message, code }, status);
 }
 
-export function unauthorizedResponse(): Response {
-  return errorResponse('Unauthorized', 'UNAUTHORIZED', 401);
+export function unauthorizedResponse(message = 'Unauthorized'): Response {
+  return errorResponse(message, 'UNAUTHORIZED', 401);
 }
 
 export function corsPreflightResponse(requestOrigin?: string | null): Response {
