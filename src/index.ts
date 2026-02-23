@@ -18,6 +18,11 @@ import {
   LOGIN_HTML,
 } from './generated/html-templates';
 
+// Configuration for driver stats worker
+const DRIVER_STATS_WORKER_URL = 'https://driver-stats.luggster.workers.dev';
+const USE_DRIVER_STATS_WORKER = true; // Set to false to use direct queries
+const DRIVER_STATS_TIMEOUT_MS = 10000; // 10 second timeout for proxy requests
+
 // Create a new pool for each request (Cloudflare Workers requirement)
 function createPool(env: Env): Pool {
   if (!env.DATABASE_URL) {
@@ -71,6 +76,64 @@ async function initializeRepositories(env: Env): Promise<ReturnType<typeof creat
   }
 }
 
+// Helper to proxy requests to driver stats worker
+async function proxyToDriverStatsWorker(endpoint: string, origin: string | null): Promise<Response> {
+  if (!USE_DRIVER_STATS_WORKER) {
+    throw new Error('Driver stats worker not enabled');
+  }
+
+  try {
+    const url = `${DRIVER_STATS_WORKER_URL}${endpoint}`;
+    console.log(`Proxying to driver stats worker: ${url}`);
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), DRIVER_STATS_TIMEOUT_MS);
+    
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      throw new Error(`Driver stats worker responded with ${response.status}: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    return jsonResponse(data, 200, true, origin);
+    
+  } catch (error) {
+    console.error('Proxy error:', error);
+    throw error;
+  }
+}
+
+// Fallback to direct database query
+async function fallbackToDirectQuery<T>(
+  queryFn: () => Promise<T>,
+  origin: string | null,
+  source: string
+): Promise<Response> {
+  try {
+    const data = await queryFn();
+    return jsonResponse({
+      success: true,
+      data,
+      meta: { 
+        source,
+        timestamp: new Date().toISOString(),
+        warning: 'Using fallback direct query'
+      }
+    }, 200, true, origin);
+  } catch (error) {
+    console.error('Fallback query error:', error);
+    throw error;
+  }
+}
+
 const worker: ExportedHandler<Env> = {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -93,7 +156,9 @@ const worker: ExportedHandler<Env> = {
           success: true, 
           data: { 
             connected: isConnected,
-            message: 'Database connection OK'
+            message: 'Database connection OK',
+            driverStatsWorkerEnabled: USE_DRIVER_STATS_WORKER,
+            driverStatsWorkerUrl: USE_DRIVER_STATS_WORKER ? DRIVER_STATS_WORKER_URL : 'disabled'
           }
         }, 200, true, origin);
       } catch (error) {
@@ -219,28 +284,84 @@ const worker: ExportedHandler<Env> = {
         return jsonResponse({ success: true, data: { message: 'Driver assigned' } }, 200, true, origin);
       }
 
-      // Drivers
+      // DRIVER STATS ENDPOINTS - PROXY TO SEPARATE WORKER
+      
+      // Drivers list - try proxy first, fallback to direct
       if (path === '/api/drivers' && method === 'GET') {
-        const drivers = await repos.drivers.listAll();
-        await pool.end(); // Close pool after request
-        return jsonResponse({ success: true, data: drivers }, 200, true, origin);
+        if (USE_DRIVER_STATS_WORKER) {
+          try {
+            return await proxyToDriverStatsWorker('/api/drivers', origin);
+          } catch (proxyError) {
+            console.log('Proxy failed, falling back to direct query:', proxyError);
+            return await fallbackToDirectQuery(
+              () => repos.drivers.listAll(),
+              origin,
+              'fallback-direct'
+            );
+          }
+        } else {
+          const drivers = await repos.drivers.listAll();
+          await pool.end(); // Close pool after request
+          return jsonResponse({ success: true, data: drivers }, 200, true, origin);
+        }
       }
 
+      // Online drivers - try proxy first, fallback to direct
       if (path === '/api/drivers/online' && method === 'GET') {
-        const drivers = await repos.drivers.listOnline();
-        await pool.end(); // Close pool after request
-        return jsonResponse({ success: true, data: drivers }, 200, true, origin);
+        if (USE_DRIVER_STATS_WORKER) {
+          try {
+            return await proxyToDriverStatsWorker('/api/drivers/online', origin);
+          } catch (proxyError) {
+            console.log('Proxy failed, falling back to direct query:', proxyError);
+            return await fallbackToDirectQuery(
+              () => repos.drivers.listOnline(),
+              origin,
+              'fallback-direct'
+            );
+          }
+        } else {
+          const drivers = await repos.drivers.listOnline();
+          await pool.end(); // Close pool after request
+          return jsonResponse({ success: true, data: drivers }, 200, true, origin);
+        }
       }
 
-      // Driver stats (live only)
+      // Driver stats (live only) - try proxy first, fallback to direct
       if (path === '/api/drivers/stats' && method === 'GET') {
-        const stats = await repos.drivers.getLiveStats();
-        await pool.end(); // Close pool after request
-        return jsonResponse({ 
-          success: true, 
-          data: stats,
-          meta: { source: 'live', timestamp: new Date().toISOString() }
-        }, 200, true, origin);
+        if (USE_DRIVER_STATS_WORKER) {
+          try {
+            return await proxyToDriverStatsWorker('/api/drivers/stats/live', origin);
+          } catch (proxyError) {
+            console.log('Proxy failed, falling back to direct query:', proxyError);
+            return await fallbackToDirectQuery(
+              () => repos.drivers.getLiveStats(),
+              origin,
+              'fallback-direct'
+            );
+          }
+        } else {
+          const stats = await repos.drivers.getLiveStats();
+          await pool.end(); // Close pool after request
+          return jsonResponse({ 
+            success: true, 
+            data: stats,
+            meta: { source: 'direct', timestamp: new Date().toISOString() }
+          }, 200, true, origin);
+        }
+      }
+
+      // Enhanced driver stats endpoint (only available via worker)
+      if (path === '/api/drivers/stats/enhanced' && method === 'GET') {
+        if (USE_DRIVER_STATS_WORKER) {
+          try {
+            return await proxyToDriverStatsWorker('/api/drivers/stats/enhanced', origin);
+          } catch (proxyError) {
+            console.log('Enhanced stats proxy failed:', proxyError);
+            return errorResponse('Enhanced stats not available', 'ENHANCED_STATS_UNAVAILABLE', 503);
+          }
+        } else {
+          return errorResponse('Enhanced stats require driver stats worker', 'WORKER_REQUIRED', 400);
+        }
       }
 
       // Legacy query endpoint

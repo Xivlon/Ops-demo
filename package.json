@@ -8,7 +8,11 @@
     "build": "npm run build:html && tsc --noEmit",
     "build:html": "node --experimental-strip-types scripts/build-html.ts",
     "dev": "wrangler dev",
+    "dev:stats": "wrangler dev src/driver-stats-worker.ts --config wrangler.driver-stats.toml",
+    "dev:all": "concurrently \"npm run dev\" \"npm run dev:stats\"",
     "deploy": "wrangler deploy",
+    "deploy:stats": "wrangler deploy --config wrangler.driver-stats.toml",
+    "deploy:all": "npm run deploy && npm run deploy:stats",
     "check": "tsc --noEmit",
     "format": "prettier --write \"src/**/*.{ts,js,json}\" \"templates/**/*.html\"",
     "lint": "tsc --noEmit && echo '✅ Type check passed'"
@@ -19,6 +23,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260124.0",
     "@types/node": "^25.0.10",
+    "concurrently": "^9.1.2",
     "prettier": "^3.0.0",
     "ts-node": "^10.9.0",
     "typescript": "^5.9.3",
