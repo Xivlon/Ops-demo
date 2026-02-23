@@ -6,10 +6,11 @@ main = "src/index.ts"
 compatibility_date = "2024-01-01"
 compatibility_flags = ["nodejs_compat"]
 
-# Development Variables (override in production with wrangler secret)
-[vars]
-ADMIN_PIN = "1234"
-JWT_EXPIRY_HOURS = "24"
+# Logs
+[observability]
+[observability.logs]
+enabled = true
+invocation_logs = true
 
 # Secrets (set via: wrangler secret put DATABASE_URL)
 # - DATABASE_URL: Neon PostgreSQL connection string
