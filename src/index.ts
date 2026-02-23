@@ -21,7 +21,7 @@ import {
 // Configuration for driver stats worker
 // For production, use the production URL. For local development, we'll detect it differently.
 // In Cloudflare Workers, we can't use process.env, so we'll use a different approach.
-const DRIVER_STATS_WORKER_URL = 'https://driver-stats.luggster.workers.dev';
+const DRIVER_STATS_WORKER_URL = 'driver-stats.constance-api.workers.dev';
 const USE_DRIVER_STATS_WORKER = true; // Set to false to use direct queries
 const DRIVER_STATS_TIMEOUT_MS = 10000; // 10 second timeout for proxy requests
 
