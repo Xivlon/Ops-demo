@@ -18,25 +18,18 @@ import {
   LOGIN_HTML,
 } from './generated/html-templates';
 
-// Connection pool instance (singleton per worker)
-let pool: Pool | null = null;
-let poolInitialized = false;
-let lastPoolError: Error | null = null;
-
-function getPool(env: Env): Pool {
-  if (!pool) {
-    if (!env.DATABASE_URL) {
-      throw new Error('DATABASE_URL not configured');
-    }
-    pool = new Pool({ 
-      connectionString: env.DATABASE_URL,
-      // Add connection timeout and retry settings
-      connectionTimeoutMillis: 5000,
-      idleTimeoutMillis: 30000,
-      max: 20,
-    });
+// Create a new pool for each request (Cloudflare Workers requirement)
+function createPool(env: Env): Pool {
+  if (!env.DATABASE_URL) {
+    throw new Error('DATABASE_URL not configured');
   }
-  return pool;
+  return new Pool({ 
+    connectionString: env.DATABASE_URL,
+    // Optimized for Cloudflare Workers (short-lived connections)
+    connectionTimeoutMillis: 10000,
+    idleTimeoutMillis: 30000,
+    max: 1, // Single connection per request
+  });
 }
 
 // Test database connection
@@ -53,40 +46,33 @@ async function testConnection(pool: Pool): Promise<boolean> {
   }
 }
 
-// Initialize repositories with retry logic
-async function initializeRepositories(env: Env, maxRetries = 3): Promise<ReturnType<typeof createRepositories>> {
-  if (!env.DATABASE_URL) {
-    throw new Error('DATABASE_URL not configured');
-  }
-
-  const pool = getPool(env);
+// Initialize repositories for a single request
+async function initializeRepositories(env: Env): Promise<ReturnType<typeof createRepositories>> {
+  const pool = createPool(env);
   
-  // Test connection with retries
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      const isConnected = await testConnection(pool);
-      if (isConnected) {
-        poolInitialized = true;
-        lastPoolError = null;
-        return createRepositories(pool);
-      }
-    } catch (error) {
-      lastPoolError = error instanceof Error ? error : new Error('Connection failed');
-      console.error(`Connection attempt ${attempt}/${maxRetries} failed:`, error);
-      
-      if (attempt < maxRetries) {
-        // Wait before retrying (exponential backoff)
-        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 100));
-      }
+  try {
+    // Test connection with timeout
+    const isConnected = await Promise.race([
+      testConnection(pool),
+      new Promise<boolean>((_, reject) => 
+        setTimeout(() => reject(new Error('Connection timeout')), 8000)
+      )
+    ]);
+    
+    if (!isConnected) {
+      throw new Error('Database connection failed');
     }
+    
+    return createRepositories(pool);
+  } catch (error) {
+    // Ensure pool is closed on error
+    await pool.end();
+    throw error;
   }
-  
-  throw lastPoolError || new Error('Failed to initialize database connection after retries');
 }
 
 const worker: ExportedHandler<Env> = {
   async fetch(request: Request, env: Env): Promise<Response> {
-    try {
     const url = new URL(request.url);
     const path = url.pathname;
     const method = request.method;
@@ -100,20 +86,21 @@ const worker: ExportedHandler<Env> = {
     // Connection health check endpoint
     if (path === '/health' && method === 'GET') {
       try {
-        const pool = getPool(env);
+        const pool = createPool(env);
         const isConnected = await testConnection(pool);
+        await pool.end(); // Close pool after health check
         return jsonResponse({ 
           success: true, 
           data: { 
             connected: isConnected,
-            poolInitialized,
-            lastError: lastPoolError?.message || null
+            message: 'Database connection OK'
           }
         }, 200, true, origin);
       } catch (error) {
         return jsonResponse({ 
           success: false, 
-          error: 'Database connection failed'
+          error: 'Database connection failed',
+          details: error instanceof Error ? error.message : 'Unknown error'
         }, 503, true, origin);
       }
     }
@@ -127,10 +114,12 @@ const worker: ExportedHandler<Env> = {
     const authResponse = await authMiddleware(request, env);
     if (authResponse) return authResponse;
 
-    // Initialize repositories with retry logic
+    // Initialize repositories for this request
     let repos;
+    let pool;
     try {
-      repos = await initializeRepositories(env);
+      pool = createPool(env);
+      repos = createRepositories(pool);
     } catch (e) {
       const error = e instanceof Error ? e.message : 'Database connection failed';
       console.error('Repository initialization error:', error);
@@ -142,6 +131,7 @@ const worker: ExportedHandler<Env> = {
       if (path === '/test' && method === 'GET') {
         const start = Date.now();
         const result = await repos.shipments.getDashboardStats(1);
+        await pool.end(); // Close pool after request
         return jsonResponse({
           success: true,
           data: { connected: true, latencyMs: Date.now() - start, stats: result },
@@ -153,6 +143,7 @@ const worker: ExportedHandler<Env> = {
         const body = await request.json() as LoginRequest;
         
         if (!body.pin || body.pin !== env.ADMIN_PIN) {
+          await pool.end();
           return errorResponse('Invalid PIN', 'INVALID_PIN', 401);
         }
 
@@ -168,6 +159,7 @@ const worker: ExportedHandler<Env> = {
         const expiryHours = parseInt(env.JWT_EXPIRY_HOURS || '24', 10);
         response.headers.set('Set-Cookie', `token=${jwt}; HttpOnly; Secure; SameSite=Strict; Max-Age=${expiryHours * 3600}; Path=/`);
         
+        await pool.end(); // Close pool after request
         return response;
       }
 
@@ -180,12 +172,14 @@ const worker: ExportedHandler<Env> = {
           origin
         );
         response.headers.set('Set-Cookie', clearJWTCookie());
+        await pool.end(); // Close pool after request
         return response;
       }
 
       // Dashboard stats
       if (path === '/api/dashboard/stats' && method === 'GET') {
         const stats = await repos.shipments.getDashboardStats();
+        await pool.end(); // Close pool after request
         return jsonResponse({ success: true, data: stats }, 200, true, origin);
       }
 
@@ -200,6 +194,7 @@ const worker: ExportedHandler<Env> = {
           limit, 
           days 
         });
+        await pool.end(); // Close pool after request
         return jsonResponse({ success: true, data: shipments }, 200, true, origin);
       }
 
@@ -210,32 +205,38 @@ const worker: ExportedHandler<Env> = {
         const body = await request.json() as { driverId: string };
         
         if (!body.driverId) {
+          await pool.end();
           return errorResponse('driverId is required', 'MISSING_DRIVER_ID', 400);
         }
 
         const success = await repos.shipments.assignDriver(shipmentId, body.driverId);
         
         if (!success) {
+          await pool.end();
           return errorResponse('Failed to assign driver', 'ASSIGN_FAILED', 400);
         }
 
+        await pool.end(); // Close pool after request
         return jsonResponse({ success: true, data: { message: 'Driver assigned' } }, 200, true, origin);
       }
 
       // Drivers
       if (path === '/api/drivers' && method === 'GET') {
         const drivers = await repos.drivers.listAll();
+        await pool.end(); // Close pool after request
         return jsonResponse({ success: true, data: drivers }, 200, true, origin);
       }
 
       if (path === '/api/drivers/online' && method === 'GET') {
         const drivers = await repos.drivers.listOnline();
+        await pool.end(); // Close pool after request
         return jsonResponse({ success: true, data: drivers }, 200, true, origin);
       }
 
       // Driver stats (live only)
       if (path === '/api/drivers/stats' && method === 'GET') {
         const stats = await repos.drivers.getLiveStats();
+        await pool.end(); // Close pool after request
         return jsonResponse({ 
           success: true, 
           data: stats,
@@ -247,23 +248,27 @@ const worker: ExportedHandler<Env> = {
       if (path === '/api/neon-query' && method === 'POST') {
         const pin = url.searchParams.get('pin');
         if (pin !== env.ADMIN_PIN) {
+          await pool.end();
           return unauthorizedResponse();
         }
 
         const body = await request.json() as { query: string; params?: unknown[] };
         
         if (!body.query) {
+          await pool.end();
           return errorResponse('Query required', 'MISSING_QUERY', 400);
         }
 
         const normalizedQuery = body.query.trim().toUpperCase();
         if (!normalizedQuery.startsWith('SELECT') && !normalizedQuery.startsWith('UPDATE')) {
+          await pool.end();
           return errorResponse('Only SELECT/UPDATE allowed', 'INVALID_QUERY', 400);
         }
 
-        const client = await getPool(env).connect();
+        const client = await pool.connect();
         try {
           const result = await client.query(body.query, body.params || []);
+          await pool.end();
           return jsonResponse({ 
             success: true, 
             data: { rows: result.rows, rowCount: result.rowCount }
@@ -275,37 +280,47 @@ const worker: ExportedHandler<Env> = {
 
       // HTML Routes
       if (path === '/login' && method === 'GET') {
-        const token = extractJWT(request);
-        if (token) {
-          const payload = await verifyJWT(token, env);
-          if (payload) {
-            return new Response(null, { status: 302, headers: { Location: '/' } });
+        // Check if JWT_SECRET is configured before trying to verify tokens
+        if (env.JWT_SECRET) {
+          const token = extractJWT(request);
+          if (token) {
+            try {
+              const payload = await verifyJWT(token, env);
+              if (payload) {
+                await pool.end();
+                return new Response(null, { status: 302, headers: { Location: '/' } });
+              }
+            } catch (error) {
+              // If JWT verification fails, just show login page
+              console.log('JWT verification failed, showing login page:', error.message);
+            }
           }
         }
+        await pool.end(); // Close pool after request
         return htmlResponse(LOGIN_HTML);
       }
 
       if (path === '/' && method === 'GET') {
+        await pool.end(); // Close pool after request
         return htmlResponse(DASHBOARD_HTML);
       }
 
       if (path === '/drivers' && method === 'GET') {
+        await pool.end(); // Close pool after request
         return htmlResponse(DRIVER_STATS_HTML);
       }
 
+      await pool.end(); // Close pool for 404 responses
       return errorResponse('Not Found', 'NOT_FOUND', 404);
 
     } catch (error) {
       console.error('Request error:', error);
       const message = error instanceof Error ? error.message : 'Internal error';
-      const stack = error instanceof Error ? error.stack : '';
-      console.error('Stack:', stack);
-      return errorResponse(message + ' - ' + stack?.substring(0, 200), 'INTERNAL_ERROR', 500);
-    }
-    } catch (error) {
-      console.error('Worker error:', error);
-      const message = error instanceof Error ? error.message : 'Worker crashed';
-      return errorResponse('Worker error: ' + message, 'WORKER_ERROR', 500);
+      // Ensure pool is closed on error
+      if (pool) {
+        await pool.end().catch(e => console.error('Failed to close pool:', e));
+      }
+      return errorResponse(message, 'INTERNAL_ERROR', 500);
     }
   },
 };
