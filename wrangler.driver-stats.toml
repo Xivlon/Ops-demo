@@ -21,11 +21,6 @@ name = 'driver-stats'
 workers_dev = false
 [vars]
 DATABASE_URL = 'postgresql://neondb_owner:npg_wrA2IV4GaHzD@ep-proud-cake-a4m2vdkf-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require'
-# Production route
-[[routes]]
-pattern = 'driver-stats.luggster.com/*'
-zone_name = 'luggster.com'
-
 # For local development/testing
 [env.development]
 name = 'driver-stats-dev'
