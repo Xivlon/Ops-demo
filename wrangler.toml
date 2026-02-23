@@ -15,6 +15,9 @@ invocation_logs = true
 # Secrets (set via: wrangler secret put DATABASE_URL)
 # - DATABASE_URL: Neon PostgreSQL connection string
 # - JWT_SECRET: Secret key for JWT signing (generate with: openssl rand -base64 32)
+[vars]
+ADMIN_PIN = "1234"
+JWT_EXPIRY_HOURS = "24"
 
 # Environment-specific configuration
 [env.staging]
