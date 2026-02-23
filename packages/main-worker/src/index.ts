@@ -284,7 +284,7 @@ const worker: ExportedHandler<Env> = {
         return jsonResponse({ success: true, data: drivers }, 200, true, origin);
       }
 
-      // Driver stats (live only) - try proxy first, fallback to direct
+      // Driver stats (detailed array for driver stats page) - try proxy first, fallback to direct
       if (path === '/api/drivers/stats' && method === 'GET') {
         if (USE_DRIVER_STATS_WORKER) {
           try {
@@ -296,13 +296,17 @@ const worker: ExportedHandler<Env> = {
             // Continue to fallback below
           }
         }
-        // Fallback to direct query
-        const stats = await repos.drivers.getLiveStats();
+        // Fallback to direct query - returns array of drivers with detailed stats
+        const stats = await repos.drivers.getDriverDetailedStats();
         await pool.end(); // Close pool after request
         return jsonResponse({ 
           success: true, 
           data: stats,
-          meta: { source: 'direct', timestamp: new Date().toISOString() }
+          meta: { 
+            source: 'direct-fallback', 
+            timestamp: new Date().toISOString(),
+            count: stats.length
+          }
         }, 200, true, origin);
       }
 

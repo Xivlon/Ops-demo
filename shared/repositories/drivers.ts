@@ -171,8 +171,12 @@ export class DriverRepository extends BaseRepository {
         -- Monthly stats (last 30 days)
         COUNT(DISTINCT CASE WHEN s.status = 'DELIVERED' AND s.updated_at > NOW() - INTERVAL '30 days' THEN s.id END) as month_completed,
         SUM(CASE WHEN s.status = 'DELIVERED' AND s.updated_at > NOW() - INTERVAL '30 days' THEN o.total ELSE 0 END) as month_revenue,
-        -- Cancelled count
-        COUNT(DISTINCT CASE WHEN s.status = 'CANCELLED' THEN s.id END) as cancelled_count
+        -- Cancelled count (all time)
+        COUNT(DISTINCT CASE WHEN s.status = 'CANCELLED' THEN s.id END) as cancelled_count,
+        -- Weekly cancelled (last 7 days)
+        COUNT(DISTINCT CASE WHEN s.status = 'CANCELLED' AND s.updated_at > NOW() - INTERVAL '7 days' THEN s.id END) as week_cancelled_count,
+        -- Monthly cancelled (last 30 days)
+        COUNT(DISTINCT CASE WHEN s.status = 'CANCELLED' AND s.updated_at > NOW() - INTERVAL '30 days' THEN s.id END) as month_cancelled_count
       FROM driver_profiles dp
       LEFT JOIN shipments s ON s.driver_id = dp.id
       LEFT JOIN orders o ON o.id = s.order_id
@@ -191,10 +195,14 @@ export class DriverRepository extends BaseRepository {
       
       // Weekly
       const week_completed = parseInt(d.week_completed) || 0;
+      const week_cancelled = parseInt(d.week_cancelled_count) || 0;
+      const week_with_result = week_completed + week_cancelled;
       const week_revenue = parseFloat(d.week_revenue) || 0;
       
       // Monthly
       const month_completed = parseInt(d.month_completed) || 0;
+      const month_cancelled = parseInt(d.month_cancelled_count) || 0;
+      const month_with_result = month_completed + month_cancelled;
       const month_revenue = parseFloat(d.month_revenue) || 0;
       
       return {
@@ -220,10 +228,11 @@ export class DriverRepository extends BaseRepository {
         month_revenue: month_revenue,
         // Weekly stats
         week_completed: week_completed,
-        week_success_rate: week_completed > 0 ? ((week_completed / (week_completed + (parseInt(d.cancelled_count) || 0))) * 100).toFixed(1) : null,
+        week_success_rate: week_with_result > 0 ? ((week_completed / week_with_result) * 100).toFixed(1) : null,
         // Monthly stats
         month_completed: month_completed,
-        month_success_rate: month_completed > 0 ? ((month_completed / (month_completed + (parseInt(d.cancelled_count) || 0))) * 100).toFixed(1) : null,
+        month_success_rate: month_with_result > 0 ? ((month_completed / month_with_result) * 100).toFixed(1) : null,
+        month_cancel_rate: month_with_result > 0 ? ((month_cancelled / month_with_result) * 100).toFixed(1) : null,
         // All-time stats
         success_rate: total_with_result > 0 ? ((total_completed / total_with_result) * 100).toFixed(1) : null,
         cancel_rate: total_with_result > 0 ? ((cancelled_count / total_with_result) * 100).toFixed(1) : null,
