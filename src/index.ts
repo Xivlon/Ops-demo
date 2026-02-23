@@ -20,6 +20,8 @@ import {
 
 // Connection pool instance (singleton per worker)
 let pool: Pool | null = null;
+let poolInitialized = false;
+let lastPoolError: Error | null = null;
 
 function getPool(env: Env): Pool {
   if (!pool) {
@@ -28,9 +30,58 @@ function getPool(env: Env): Pool {
     }
     pool = new Pool({ 
       connectionString: env.DATABASE_URL,
+      // Add connection timeout and retry settings
+      connectionTimeoutMillis: 5000,
+      idleTimeoutMillis: 30000,
+      max: 20,
     });
   }
   return pool;
+}
+
+// Test database connection
+async function testConnection(pool: Pool): Promise<boolean> {
+  const client = await pool.connect();
+  try {
+    await client.query('SELECT 1');
+    return true;
+  } catch (error) {
+    console.error('Database connection test failed:', error);
+    return false;
+  } finally {
+    client.release();
+  }
+}
+
+// Initialize repositories with retry logic
+async function initializeRepositories(env: Env, maxRetries = 3): Promise<ReturnType<typeof createRepositories>> {
+  if (!env.DATABASE_URL) {
+    throw new Error('DATABASE_URL not configured');
+  }
+
+  const pool = getPool(env);
+  
+  // Test connection with retries
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const isConnected = await testConnection(pool);
+      if (isConnected) {
+        poolInitialized = true;
+        lastPoolError = null;
+        return createRepositories(pool);
+      }
+    } catch (error) {
+      lastPoolError = error instanceof Error ? error : new Error('Connection failed');
+      console.error(`Connection attempt ${attempt}/${maxRetries} failed:`, error);
+      
+      if (attempt < maxRetries) {
+        // Wait before retrying (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 100));
+      }
+    }
+  }
+  
+  throw lastPoolError || new Error('Failed to initialize database connection after retries');
 }
 
 const worker: ExportedHandler<Env> = {
@@ -46,6 +97,28 @@ const worker: ExportedHandler<Env> = {
       return jsonResponse({ success: true, data: { message: 'pong', timestamp: new Date().toISOString() } }, 200, true, origin);
     }
 
+    // Connection health check endpoint
+    if (path === '/health' && method === 'GET') {
+      try {
+        const pool = getPool(env);
+        const isConnected = await testConnection(pool);
+        return jsonResponse({ 
+          success: true, 
+          data: { 
+            connected: isConnected,
+            poolInitialized,
+            lastError: lastPoolError?.message || null
+          }
+        }, 200, true, origin);
+      } catch (error) {
+        return jsonResponse({ 
+          success: false, 
+          error: 'Database connection failed',
+          details: error instanceof Error ? error.message : 'Unknown error'
+        }, 503, true, origin);
+      }
+    }
+
     // Handle CORS preflight
     if (method === 'OPTIONS') {
       return corsPreflightResponse(origin);
@@ -55,20 +128,14 @@ const worker: ExportedHandler<Env> = {
     const authResponse = await authMiddleware(request, env);
     if (authResponse) return authResponse;
 
-    // Check database URL
-    if (!env.DATABASE_URL) {
-      return errorResponse('DATABASE_URL not configured', 'DB_CONFIG_ERROR', 500);
-    }
-
-    // Initialize repositories
+    // Initialize repositories with retry logic
     let repos;
     try {
-      const pool = getPool(env);
-      repos = createRepositories(pool);
+      repos = await initializeRepositories(env);
     } catch (e) {
       const error = e instanceof Error ? e.message : 'Database connection failed';
-      console.error('Pool init error:', error);
-      return errorResponse('Database connection failed: ' + error, 'DB_CONNECTION_ERROR', 500);
+      console.error('Repository initialization error:', error);
+      return errorResponse('Database connection failed: ' + error, 'DB_CONNECTION_ERROR', 503);
     }
 
     try {

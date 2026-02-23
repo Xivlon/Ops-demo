@@ -260,7 +260,11 @@
             })));
             
             document.getElementById('count-badge').innerText = allShipments.length;
-            document.getElementById('last-updated').innerText = "Synced: " + new Date().toLocaleTimeString();
+            const now = new Date();
+            const nextRefresh = new Date(now.getTime() + 90000); // 90 seconds from now
+            document.getElementById('last-updated').innerText = 
+                "Synced: " + now.toLocaleTimeString() + 
+                " | Next: " + nextRefresh.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
 
             renderTable();
 
@@ -560,7 +564,8 @@
     
     function startAutoRefresh() {
         if (refreshInterval) clearInterval(refreshInterval);
-        refreshInterval = setInterval(safeRefresh, 30000);
+        // Increased refresh interval from 30s to 90s to reduce load
+        refreshInterval = setInterval(safeRefresh, 90000);
     }
     
     // Initial load
