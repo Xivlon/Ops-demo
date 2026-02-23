@@ -1,6 +1,6 @@
 import { Pool } from '@neondatabase/serverless';
 import type { ExportedHandler } from '@cloudflare/workers-types';
-import type { Env, LoginRequest } from './types';
+import type { Env, LoginRequest, ApiResponse } from './types';
 import { createRepositories } from './repositories';
 import { authMiddleware } from './middleware/auth';
 import { createJWT, verifyJWT, extractJWT } from './utils/jwt';
@@ -19,7 +19,11 @@ import {
 } from './generated/html-templates';
 
 // Configuration for driver stats worker
-const DRIVER_STATS_WORKER_URL = 'https://driver-stats.luggster.workers.dev';
+// Use localhost for development, production URL for deployment
+const IS_DEVELOPMENT = process.env.NODE_ENV === 'development' || process.env.LOCAL_DEV === 'true';
+const DRIVER_STATS_WORKER_URL = IS_DEVELOPMENT 
+  ? 'http://localhost:8788' 
+  : 'https://driver-stats.luggster.workers.dev';
 const USE_DRIVER_STATS_WORKER = true; // Set to false to use direct queries
 const DRIVER_STATS_TIMEOUT_MS = 10000; // 10 second timeout for proxy requests
 
@@ -51,31 +55,6 @@ async function testConnection(pool: Pool): Promise<boolean> {
   }
 }
 
-// Initialize repositories for a single request
-async function initializeRepositories(env: Env): Promise<ReturnType<typeof createRepositories>> {
-  const pool = createPool(env);
-  
-  try {
-    // Test connection with timeout
-    const isConnected = await Promise.race([
-      testConnection(pool),
-      new Promise<boolean>((_, reject) => 
-        setTimeout(() => reject(new Error('Connection timeout')), 8000)
-      )
-    ]);
-    
-    if (!isConnected) {
-      throw new Error('Database connection failed');
-    }
-    
-    return createRepositories(pool);
-  } catch (error) {
-    // Ensure pool is closed on error
-    await pool.end();
-    throw error;
-  }
-}
-
 // Helper to proxy requests to driver stats worker
 async function proxyToDriverStatsWorker(endpoint: string, origin: string | null): Promise<Response> {
   if (!USE_DRIVER_STATS_WORKER) {
@@ -102,7 +81,7 @@ async function proxyToDriverStatsWorker(endpoint: string, origin: string | null)
       throw new Error(`Driver stats worker responded with ${response.status}: ${response.statusText}`);
     }
     
-    const data = await response.json();
+    const data = await response.json() as ApiResponse;
     return jsonResponse(data, 200, true, origin);
     
   } catch (error) {
@@ -158,7 +137,8 @@ const worker: ExportedHandler<Env> = {
             connected: isConnected,
             message: 'Database connection OK',
             driverStatsWorkerEnabled: USE_DRIVER_STATS_WORKER,
-            driverStatsWorkerUrl: USE_DRIVER_STATS_WORKER ? DRIVER_STATS_WORKER_URL : 'disabled'
+            driverStatsWorkerUrl: DRIVER_STATS_WORKER_URL,
+            isDevelopment: IS_DEVELOPMENT
           }
         }, 200, true, origin);
       } catch (error) {
@@ -412,7 +392,11 @@ const worker: ExportedHandler<Env> = {
               }
             } catch (error) {
               // If JWT verification fails, just show login page
-              console.log('JWT verification failed, showing login page:', error.message);
+              if (error instanceof Error) {
+                console.log('JWT verification failed, showing login page:', error.message);
+              } else {
+                console.log('JWT verification failed, showing login page:', String(error));
+              }
             }
           }
         }

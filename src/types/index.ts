@@ -90,25 +90,32 @@ export interface Driver {
   account_updated_at?: string;
 }
 
+// Simplified DriverStats for the getLiveStats method
 export interface DriverStats {
-  id: string;
-  email: string;
-  first_name: string;
-  last_name: string;
-  is_online: boolean;
-  phone: string | null;
-  account_created_at: string;
-  total_assigned: number;
-  pending_count: number;
-  assigned_count: number;
-  in_transit_count: number;
-  total_completed: number;
-  cancelled_count: number;
-  total_revenue: number;
-  week_completed: number;
-  month_completed: number;
-  success_rate: number | null;
-  avg_rating: number;
+  total_drivers: number;
+  online_drivers: number;
+  offline_drivers: number;
+  top_driver: {
+    id: string;
+    name: string;
+    deliveries: number;
+  } | null;
+}
+
+// Enhanced driver stats with more details
+export interface EnhancedDriverStats {
+  total: number;
+  online: number;
+  offline: number;
+  topDriver: {
+    id: string;
+    name: string;
+    deliveries: number;
+    rating: number | null;
+    vehicle: string | null;
+  } | null;
+  vehicleBreakdown: Record<string, number>;
+  averageRating: number;
 }
 
 // Dashboard stats

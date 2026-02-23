@@ -1,6 +1,6 @@
 import { Pool } from '@neondatabase/serverless';
 import type { ExportedHandler } from '@cloudflare/workers-types';
-import type { Env } from './types';
+import type { Env, EnhancedDriverStats } from './types';
 import { createRepositories } from './repositories';
 
 // Create a new pool for each request (Cloudflare Workers requirement)
@@ -28,31 +28,6 @@ async function testConnection(pool: Pool): Promise<boolean> {
     return false;
   } finally {
     client.release();
-  }
-}
-
-// Initialize repositories for a single request
-async function initializeRepositories(env: Env): Promise<ReturnType<typeof createRepositories>> {
-  const pool = createPool(env);
-  
-  try {
-    // Test connection with timeout
-    const isConnected = await Promise.race([
-      testConnection(pool),
-      new Promise<boolean>((_, reject) => 
-        setTimeout(() => reject(new Error('Connection timeout')), 8000)
-      )
-    ]);
-    
-    if (!isConnected) {
-      throw new Error('Database connection failed');
-    }
-    
-    return createRepositories(pool);
-  } catch (error) {
-    // Ensure pool is closed on error
-    await pool.end();
-    throw error;
   }
 }
 
@@ -222,43 +197,13 @@ const worker: ExportedHandler<Env> = {
 
       // Enhanced driver stats with more details
       if (path === '/api/drivers/stats/enhanced' && method === 'GET') {
-        const [totalDrivers, onlineDrivers, topDriver] = await Promise.all([
-          repos.drivers.listAll(),
-          repos.drivers.listOnline(),
-          (async () => {
-            const allDrivers = await repos.drivers.listAll();
-            return allDrivers.reduce((max, driver) => 
-              (driver.total_deliveries || 0) > (max.total_deliveries || 0) ? driver : max
-            , allDrivers[0] || null);
-          })()
-        ]);
-
-        await pool.end(); // Close pool after request
+        const stats = await repos.drivers.getEnhancedStats();
         
-        const stats = {
-          total: totalDrivers.length,
-          online: onlineDrivers.length,
-          offline: totalDrivers.length - onlineDrivers.length,
-          topDriver: topDriver ? {
-            id: topDriver.id,
-            name: `${topDriver.first_name} ${topDriver.last_name}`,
-            deliveries: topDriver.total_deliveries || 0,
-            rating: topDriver.rating,
-            vehicle: topDriver.vehicle_type
-          } : null,
-          vehicleBreakdown: totalDrivers.reduce((acc, driver) => {
-            const type = driver.vehicle_type || 'unknown';
-            acc[type] = (acc[type] || 0) + 1;
-            return acc;
-          }, {} as Record<string, number>),
-          averageRating: totalDrivers.length > 0 
-            ? totalDrivers.reduce((sum, driver) => sum + (driver.rating || 0), 0) / totalDrivers.length
-            : 0
-        };
+        await pool.end(); // Close pool after request
         
         return new Response(JSON.stringify({
           success: true,
-          data: stats,
+          data: stats as EnhancedDriverStats,
           meta: { 
             source: 'driver-stats-worker', 
             timestamp: new Date().toISOString() 
