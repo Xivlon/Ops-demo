@@ -11,18 +11,19 @@ compatibility_flags = ['nodejs_compat']
 enabled = true
 invocation_logs = true
 
+# Environment variables
+[vars]
+DATABASE_URL = 'postgresql://neondb_owner:npg_wrA2IV4GaHzD@ep-proud-cake-a4m2vdkf-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require'
+JWT_EXPIRY_HOURS = '24'
+
 # Environment-specific configuration
 [env.staging]
 name = 'luggster-ops-staging'
+workers_dev = true
 
 [env.production]
 name = 'luggster-ops'
-workers_dev = false
-
-# Production route
-[[routes]]
-pattern = 'ops.luggster.com/*'
-zone_name = 'luggster.com'
+workers_dev = true  # Using workers.dev domain: luggster-ops.constance-api.workers.dev
 
 # For local development/testing
 [env.development]

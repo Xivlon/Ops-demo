@@ -11,13 +11,18 @@ compatibility_flags = ['nodejs_compat']
 enabled = true
 invocation_logs = true
 
+# Environment variables
+[vars]
+DATABASE_URL = 'postgresql://neondb_owner:npg_wrA2IV4GaHzD@ep-proud-cake-a4m2vdkf-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require'
+
 # Environment-specific configuration
 [env.staging]
 name = 'driver-stats-staging'
+workers_dev = true
 
 [env.production]
 name = 'driver-stats'
-workers_dev = true  # Use workers.dev subdomain
+workers_dev = true  # Using workers.dev domain: driver-stats.constance-api.workers.dev
 
 # For local development/testing
 [env.development]
