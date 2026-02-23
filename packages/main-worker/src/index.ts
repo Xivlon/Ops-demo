@@ -74,37 +74,24 @@ async function proxyToDriverStatsWorker(endpoint: string, origin: string | null)
     clearTimeout(timeoutId);
     
     if (!response.ok) {
-      throw new Error(`Driver stats worker responded with ${response.status}: ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(`Driver stats worker responded with ${response.status}: ${errorText}`);
     }
     
-    const data = await response.json() as ApiResponse;
-    return jsonResponse(data, 200, true, origin);
+    // Get the raw response body and pass it through with CORS headers
+    const body = await response.text();
+    
+    return new Response(body, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': origin || '*',
+        'Access-Control-Allow-Credentials': 'true',
+      }
+    });
     
   } catch (error) {
     console.error('Proxy error:', error);
-    throw error;
-  }
-}
-
-// Fallback to direct database query
-async function fallbackToDirectQuery<T>(
-  queryFn: () => Promise<T>,
-  origin: string | null,
-  source: string
-): Promise<Response> {
-  try {
-    const data = await queryFn();
-    return jsonResponse({
-      success: true,
-      data,
-      meta: { 
-        source,
-        timestamp: new Date().toISOString(),
-        warning: 'Using fallback direct query'
-      }
-    }, 200, true, origin);
-  } catch (error) {
-    console.error('Fallback query error:', error);
     throw error;
   }
 }
@@ -265,78 +252,75 @@ const worker: ExportedHandler<Env> = {
       if (path === '/api/drivers' && method === 'GET') {
         if (USE_DRIVER_STATS_WORKER) {
           try {
-            return await proxyToDriverStatsWorker('/api/drivers', origin);
+            const response = await proxyToDriverStatsWorker('/api/drivers', origin);
+            await pool.end(); // Close pool before returning
+            return response;
           } catch (proxyError) {
             console.log('Proxy failed, falling back to direct query:', proxyError);
-            return await fallbackToDirectQuery(
-              () => repos.drivers.listAll(),
-              origin,
-              'fallback-direct'
-            );
+            // Continue to fallback below
           }
-        } else {
-          const drivers = await repos.drivers.listAll();
-          await pool.end(); // Close pool after request
-          return jsonResponse({ success: true, data: drivers }, 200, true, origin);
         }
+        // Fallback to direct query
+        const drivers = await repos.drivers.listAll();
+        await pool.end(); // Close pool after request
+        return jsonResponse({ success: true, data: drivers }, 200, true, origin);
       }
 
       // Online drivers - try proxy first, fallback to direct
       if (path === '/api/drivers/online' && method === 'GET') {
         if (USE_DRIVER_STATS_WORKER) {
           try {
-            return await proxyToDriverStatsWorker('/api/drivers/online', origin);
+            const response = await proxyToDriverStatsWorker('/api/drivers/online', origin);
+            await pool.end(); // Close pool before returning
+            return response;
           } catch (proxyError) {
             console.log('Proxy failed, falling back to direct query:', proxyError);
-            return await fallbackToDirectQuery(
-              () => repos.drivers.listOnline(),
-              origin,
-              'fallback-direct'
-            );
+            // Continue to fallback below
           }
-        } else {
-          const drivers = await repos.drivers.listOnline();
-          await pool.end(); // Close pool after request
-          return jsonResponse({ success: true, data: drivers }, 200, true, origin);
         }
+        // Fallback to direct query
+        const drivers = await repos.drivers.listOnline();
+        await pool.end(); // Close pool after request
+        return jsonResponse({ success: true, data: drivers }, 200, true, origin);
       }
 
       // Driver stats (live only) - try proxy first, fallback to direct
       if (path === '/api/drivers/stats' && method === 'GET') {
         if (USE_DRIVER_STATS_WORKER) {
           try {
-            return await proxyToDriverStatsWorker('/api/drivers/stats/live', origin);
+            const response = await proxyToDriverStatsWorker('/api/drivers/stats/live', origin);
+            await pool.end(); // Close pool before returning
+            return response;
           } catch (proxyError) {
             console.log('Proxy failed, falling back to direct query:', proxyError);
-            return await fallbackToDirectQuery(
-              () => repos.drivers.getLiveStats(),
-              origin,
-              'fallback-direct'
-            );
+            // Continue to fallback below
           }
-        } else {
-          const stats = await repos.drivers.getLiveStats();
-          await pool.end(); // Close pool after request
-          return jsonResponse({ 
-            success: true, 
-            data: stats,
-            meta: { source: 'direct', timestamp: new Date().toISOString() }
-          }, 200, true, origin);
         }
+        // Fallback to direct query
+        const stats = await repos.drivers.getLiveStats();
+        await pool.end(); // Close pool after request
+        return jsonResponse({ 
+          success: true, 
+          data: stats,
+          meta: { source: 'direct', timestamp: new Date().toISOString() }
+        }, 200, true, origin);
       }
 
       // Enhanced driver stats endpoint (only available via worker)
       if (path === '/api/drivers/stats/enhanced' && method === 'GET') {
         if (USE_DRIVER_STATS_WORKER) {
           try {
-            return await proxyToDriverStatsWorker('/api/drivers/stats/enhanced', origin);
+            const response = await proxyToDriverStatsWorker('/api/drivers/stats/enhanced', origin);
+            await pool.end(); // Close pool before returning
+            return response;
           } catch (proxyError) {
             console.log('Enhanced stats proxy failed:', proxyError);
+            await pool.end();
             return errorResponse('Enhanced stats not available', 'ENHANCED_STATS_UNAVAILABLE', 503);
           }
-        } else {
-          return errorResponse('Enhanced stats require driver stats worker', 'WORKER_REQUIRED', 400);
         }
+        await pool.end();
+        return errorResponse('Enhanced stats require driver stats worker', 'WORKER_REQUIRED', 400);
       }
 
       // Legacy query endpoint

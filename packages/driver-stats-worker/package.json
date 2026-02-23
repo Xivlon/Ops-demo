@@ -5,6 +5,7 @@
   "main": "src/index.ts",
   "type": "module",
   "scripts": {
+    "build": "echo 'No build step needed - Wrangler handles TypeScript directly'",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "check": "tsc --noEmit"
