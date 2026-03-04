@@ -43,10 +43,10 @@ export class ShipmentRepository extends BaseRepository {
 
     const rows = await this.query<Shipment>(sql, queryParams);
     
-    // Calculate urgency for each shipment
+    // Calculate urgency for each shipment (using both pickup and dropoff times)
     return rows.map(row => ({
       ...row,
-      urgency: calculatePickupUrgency(row.pickup_at)
+      urgency: calculatePickupUrgency(row.pickup_at, row.dropoff_by)
     }));
   }
 

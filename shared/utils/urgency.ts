@@ -1,6 +1,6 @@
 import type { UrgencyLevel, UrgencyConfig } from '../types';
 
-export function calculatePickupUrgency(pickupAt: string | null | undefined): UrgencyLevel {
+export function calculatePickupUrgency(pickupAt: string | null | undefined, dropoffBy?: string | null | undefined): UrgencyLevel {
   if (!pickupAt) return 'NORMAL';
   
   const now = new Date();
@@ -9,9 +9,20 @@ export function calculatePickupUrgency(pickupAt: string | null | undefined): Urg
   const diffMinutes = Math.floor(diffMs / 60000);
   const diffHours = diffMs / 3600000;
   
-  // Failed: pickup time exceeded 1 hour ago
-  if (diffHours < -1) return 'FAILED';
+  // Check dropoff time first - if dropoff time has passed, it's FAILED
+  if (dropoffBy) {
+    const dropoff = new Date(dropoffBy);
+    const dropoffDiffMs = dropoff.getTime() - now.getTime();
+    const dropoffDiffHours = dropoffDiffMs / 3600000;
+    
+    // Failed: dropoff time exceeded 1 hour ago
+    if (dropoffDiffHours < -1) return 'FAILED';
+    
+    // Overdue: dropoff time has passed (within last hour) - this takes priority over pickup urgency
+    if (dropoffDiffMs <= 0) return 'OVERDUE';
+  }
   
+  // Pickup-based urgency (only if dropoff hasn't passed)
   // Overdue: pickup time has passed (within last hour)
   if (diffMinutes <= 0) return 'OVERDUE';
   
@@ -112,6 +123,6 @@ export function formatTimeRemaining(targetTime: string | null | undefined): stri
 }
 
 export function shouldShowUrgency(status: string): boolean {
-  // Only show urgency for orders that haven't been picked up yet
-  return ['PENDING', 'ASSIGNED'].includes(status);
+  // Show urgency for pending, assigned, AND in-transit orders
+  return ['PENDING', 'ASSIGNED', 'PICKED_UP'].includes(status);
 }

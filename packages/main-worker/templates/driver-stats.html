@@ -33,26 +33,30 @@
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen">
   
-  <nav class="bg-slate-800 border-b border-slate-700 px-6 py-4 sticky top-0 z-50">
+  <nav class="bg-slate-800 border-b border-slate-700 px-6 py-4 sticky top-0 z-50 shadow-md">
     <div class="max-w-7xl mx-auto flex justify-between items-center">
       <div class="flex items-center gap-3">
-        <div class="bg-emerald-600 p-2.5 rounded-lg">
+        <div class="bg-emerald-600 p-2.5 rounded-lg shadow-inner shadow-emerald-400/20">
           <i data-lucide="users" class="w-7 h-7"></i>
         </div>
         <div>
-          <h1 class="text-xl font-bold">Driver Performance</h1>
+          <h1 class="text-xl font-bold tracking-tight">Driver Performance</h1>
           <div class="flex items-center gap-2">
             <span id="status-indicator" class="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></span>
-            <p id="status-text" class="text-xs text-slate-400">Loading...</p>
+            <p id="status-text" class="text-xs text-slate-400 font-medium">Loading...</p>
           </div>
         </div>
       </div>
-      <div class="flex gap-3 items-center">
-        <span class="text-xs text-emerald-400 flex items-center gap-1">
-          <i data-lucide="zap" class="w-3 h-3"></i> Live Data
-        </span>
-        <button onclick="window.location.href='/'" class="bg-slate-700 px-4 py-2 rounded text-sm hover:bg-slate-600">Back</button>
-        <button onclick="logout()" class="bg-red-700 px-4 py-2 rounded text-sm hover:bg-red-600">Logout</button>
+      <div class="flex items-center gap-2">
+        <button onclick="window.location.href='/'" class="p-2.5 rounded-lg text-slate-400 hover:text-blue-400 hover:bg-slate-800 transition-all" title="Back to Dashboard">
+          <i data-lucide="arrow-left" class="w-5 h-5"></i>
+        </button>
+        <button onclick="refreshData()" class="p-2.5 rounded-lg text-slate-400 hover:text-emerald-400 hover:bg-slate-800 transition-all" title="Refresh">
+          <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+        </button>
+        <button onclick="logout()" class="p-2.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-slate-800 transition-all" title="Logout">
+          <i data-lucide="log-out" class="w-5 h-5"></i>
+        </button>
       </div>
     </div>
   </nav>
@@ -60,46 +64,71 @@
   <div class="max-w-7xl mx-auto p-6 space-y-6">
     <div id="toast-container" class="fixed top-24 right-6 z-50"></div>
     
-    <div class="bg-slate-800 rounded-lg p-4 border border-slate-700 space-y-4">
-      <div class="flex flex-wrap gap-4 items-center">
-        <button onclick="refreshData()" class="flex items-center gap-2 bg-emerald-700 px-4 py-2 rounded text-sm hover:bg-emerald-600">
-          <i data-lucide="refresh-cw" class="w-4 h-4"></i>
-          Refresh
-        </button>
-        <button onclick="toggleAutoRefresh()" id="btn-auto-refresh" class="flex items-center gap-2 bg-emerald-700 px-4 py-2 rounded text-sm hover:bg-emerald-600">
-          <i data-lucide="play" class="w-4 h-4"></i>
-          Auto-Refresh: <span id="auto-refresh-status">On</span>
-        </button>
-        <div class="flex items-center gap-2 text-xs text-slate-400 ml-auto">
-          <i data-lucide="clock" class="w-4 h-4"></i>
-          <span id="last-updated">Loading...</span>
+    <!-- Stats Cards -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4" id="driver-stats-grid">
+      <div class="bg-slate-800 h-24 rounded-xl animate-pulse"></div>
+      <div class="bg-slate-800 h-24 rounded-xl animate-pulse"></div>
+      <div class="bg-slate-800 h-24 rounded-xl animate-pulse"></div>
+      <div class="bg-slate-800 h-24 rounded-xl animate-pulse"></div>
+    </div>
+    
+    <!-- Controls Bar -->
+    <div class="bg-slate-800 rounded-xl p-4 border border-slate-700 flex flex-wrap gap-4 items-center justify-between">
+      <div class="flex items-center gap-4">
+        <!-- Search -->
+        <div class="relative">
+          <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500"></i>
+          <input 
+            type="text" 
+            id="searchInput" 
+            placeholder="Search drivers..." 
+            oninput="applySortAndFilter()"
+            class="bg-slate-900 border border-slate-600 text-slate-300 text-sm rounded-lg pl-9 pr-3 py-2 w-56 focus:border-emerald-500 outline-none placeholder:text-slate-600"
+          >
         </div>
-      </div>
-      
-      <div class="flex flex-wrap gap-4 items-center">
+        
+        <!-- Sort -->
         <div class="flex items-center gap-2">
-          <label class="text-sm text-slate-400">Sort by:</label>
-          <select id="sort-select" onchange="applySortAndFilter()" class="bg-slate-700 text-white px-3 py-2 rounded text-sm border border-slate-600 focus:outline-none focus:border-emerald-500">
+          <i data-lucide="arrow-up-down" class="w-4 h-4 text-slate-500"></i>
+          <select id="sort-select" onchange="applySortAndFilter()" class="bg-slate-900 text-slate-300 text-sm rounded-lg px-3 py-2 border border-slate-600 focus:border-emerald-500 outline-none cursor-pointer">
             <option value="deliveries-desc">Most Deliveries</option>
             <option value="deliveries-asc">Least Deliveries</option>
             <option value="revenue-desc">Highest Revenue</option>
             <option value="revenue-asc">Lowest Revenue</option>
-            <option value="success-desc">Highest Success Rate</option>
-            <option value="success-asc">Lowest Success Rate</option>
+            <option value="success-desc">Best Success Rate</option>
+            <option value="success-asc">Worst Success Rate</option>
             <option value="cancel-desc">Highest Cancel Rate</option>
             <option value="cancel-asc">Lowest Cancel Rate</option>
-            <option value="active-recent">Most Recently Active</option>
-            <option value="active-oldest">Least Recently Active</option>
+            <option value="active-recent">Recently Active</option>
+            <option value="active-oldest">Inactive Longest</option>
           </select>
         </div>
         
+        <!-- Filter -->
         <div class="flex items-center gap-2">
-          <label class="text-sm text-slate-400">Filter:</label>
-          <select id="filter-select" onchange="applySortAndFilter()" class="bg-slate-700 text-white px-3 py-2 rounded text-sm border border-slate-600 focus:outline-none focus:border-emerald-500">
+          <i data-lucide="filter" class="w-4 h-4 text-slate-500"></i>
+          <select id="filter-select" onchange="applySortAndFilter()" class="bg-slate-900 text-slate-300 text-sm rounded-lg px-3 py-2 border border-slate-600 focus:border-emerald-500 outline-none cursor-pointer">
             <option value="all">All Drivers</option>
+            <option value="online">Online Only</option>
+            <option value="offline">Offline Only</option>
             <option value="high-performers">High Performers</option>
             <option value="needs-attention">Needs Attention</option>
           </select>
+        </div>
+      </div>
+      
+      <div class="flex items-center gap-3">
+        <!-- Auto-refresh Toggle -->
+        <button onclick="toggleAutoRefresh()" id="btn-auto-refresh" class="flex items-center gap-2 bg-emerald-700 hover:bg-emerald-600 px-3 py-2 rounded-lg text-sm font-medium transition-colors" title="Automatically refresh data every 30 seconds">
+          <i data-lucide="zap" class="w-4 h-4"></i>
+          <span>Live:</span>
+          <span id="auto-refresh-status">On</span>
+        </button>
+        
+        <!-- Last Updated -->
+        <div class="flex items-center gap-2 text-xs text-slate-400">
+          <i data-lucide="clock" class="w-3 h-3"></i>
+          <span id="last-updated">Loading...</span>
         </div>
       </div>
     </div>
@@ -174,8 +203,31 @@
       }
     }
 
+    function renderStatsCards() {
+      const onlineCount = allDrivers.filter(d => d.is_online === true || d.is_online === 'true').length;
+      const totalRevenue = allDrivers.reduce((sum, d) => sum + (parseFloat(d.total_revenue) || 0), 0);
+      const avgSuccessRate = allDrivers.length > 0 
+        ? (allDrivers.reduce((sum, d) => sum + (parseFloat(d.success_rate) || 0), 0) / allDrivers.length).toFixed(1)
+        : 0;
+      
+      const makeCard = (label, val, color) => {
+        return `<div class="bg-slate-800 rounded-xl p-4 border border-slate-700 relative overflow-hidden group">
+                <div class="absolute top-0 right-0 w-16 h-16 bg-${color}-500/10 rounded-bl-full -mr-2 -mt-2"></div>
+                <div class="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">${label}</div>
+                <div class="text-2xl font-black text-${color}-400 relative z-10">${val}</div>
+                </div>`;
+      };
+      
+      document.getElementById('driver-stats-grid').innerHTML = 
+        makeCard('Total Drivers', allDrivers.length, 'blue') +
+        makeCard('Online Now', onlineCount, 'green') +
+        makeCard('Total Revenue', '$' + totalRevenue.toFixed(2), 'emerald') +
+        makeCard('Avg Success', avgSuccessRate + '%', 'cyan');
+    }
+
     async function loadDriverStats() {
       try {
+        // Use the cached driver_stats table (maintained by main app via triggers)
         const res = await fetch('/api/drivers/stats', {
           headers: { 'Accept': 'application/json' },
           credentials: 'include'
@@ -192,24 +244,47 @@
         const result = await res.json();
         allDrivers = result.data || [];
         
-        document.getElementById('status-indicator').className = "w-2 h-2 rounded-full bg-green-500";
-        document.getElementById('status-text').innerText = 'Connected - ' + allDrivers.length + ' drivers';
+        // Calculate online count from driver_profiles data
+        const onlineCount = allDrivers.filter(d => d.is_online === true || d.is_online === 'true').length;
         
+        document.getElementById('status-indicator').className = "w-2 h-2 rounded-full bg-green-500";
+        document.getElementById('status-text').innerText = onlineCount + ' of ' + allDrivers.length + ' drivers online';
+        
+        renderStatsCards();
         applySortAndFilter();
         
       } catch (e) { 
         console.error("Error:", e);
         document.getElementById('status-indicator').className = "w-2 h-2 rounded-full bg-red-500";
-        document.getElementById('status-text').innerText = "Error loading drivers";
+        document.getElementById('status-text').innerText = "Error";
         showToast("Failed to load driver data", "red");
       }
     }
     
     function applySortAndFilter() {
       let filtered = [...allDrivers];
-      
+      const searchQuery = document.getElementById('searchInput').value.toLowerCase().trim();
       const filterValue = document.getElementById('filter-select').value;
-      if (filterValue === 'high-performers') {
+      
+      // Apply search filter
+      if (searchQuery) {
+        filtered = filtered.filter(d => {
+          const searchText = [
+            d.first_name,
+            d.last_name,
+            d.email,
+            d.phone
+          ].filter(Boolean).join(' ').toLowerCase();
+          return searchText.includes(searchQuery);
+        });
+      }
+      
+      // Apply dropdown filter
+      if (filterValue === 'online') {
+        filtered = filtered.filter(d => d.is_online);
+      } else if (filterValue === 'offline') {
+        filtered = filtered.filter(d => !d.is_online);
+      } else if (filterValue === 'high-performers') {
         filtered = filtered.filter(d => {
           const successRate = parseFloat(d.success_rate);
           const weekCompleted = parseInt(d.week_completed) || 0;
@@ -221,6 +296,16 @@
           const weekCompleted = parseInt(d.week_completed) || 0;
           return isNaN(successRate) || successRate < 70 || weekCompleted < 5;
         });
+      }
+      
+      // Calculate online count for header
+      const onlineCount = allDrivers.filter(d => d.is_online === true || d.is_online === 'true').length;
+      
+      // Update status text with filtered count and online status
+      if (searchQuery || filterValue !== 'all') {
+        document.getElementById('status-text').innerText = filtered.length + ' of ' + allDrivers.length + ' drivers (' + onlineCount + ' online)';
+      } else {
+        document.getElementById('status-text').innerText = onlineCount + ' of ' + allDrivers.length + ' drivers online';
       }
       
       const sortValue = document.getElementById('sort-select').value;

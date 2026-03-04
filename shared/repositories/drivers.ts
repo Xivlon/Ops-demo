@@ -276,4 +276,89 @@ export class DriverRepository extends BaseRepository {
       averageRating
     };
   }
+
+  // Calculate driver rating based on 30-day performance
+  calculateDriverRating(driver: any): number {
+    const monthCompleted = parseInt(driver.month_completed) || 0;
+    const monthCancelRate = parseFloat(driver.month_cancel_rate) || 0;
+    
+    // Base rating starts at 3.0 (neutral)
+    let rating = 3.0;
+    
+    // Adjust based on cancellation rate (lower is better)
+    // 0% cancel = +1.5, 10%+ cancel = -1.5
+    if (monthCancelRate <= 5) {
+      rating += 1.5;
+    } else if (monthCancelRate <= 10) {
+      rating += 0.5;
+    } else if (monthCancelRate <= 20) {
+      rating -= 0.5;
+    } else {
+      rating -= 1.5;
+    }
+    
+    // Adjust based on monthly completed orders
+    // 20+ orders = +0.5, 0 orders = -0.5
+    if (monthCompleted >= 20) {
+      rating += 0.5;
+    } else if (monthCompleted >= 10) {
+      rating += 0.2;
+    } else if (monthCompleted === 0) {
+      rating -= 0.5;
+    }
+    
+    // Cap between 1.0 and 5.0
+    return Math.max(1.0, Math.min(5.0, rating));
+  }
+
+  // Update driver rating in database
+  async updateRating(driverId: string, rating: number): Promise<boolean> {
+    const query = `
+      UPDATE driver_profiles 
+      SET rating = $1, updated_at = NOW()
+      WHERE id = $2
+      RETURNING id
+    `;
+    const result = await this.query<{ id: string }>(query, [rating, driverId]);
+    return result.length > 0;
+  }
+
+  // Get driver stats - join driver_profiles (real-time profile data) with driver_stats (computed stats)
+  async getCachedStats(): Promise<any[]> {
+    const query = `
+      SELECT 
+        -- Profile data from driver_profiles (real-time)
+        dp.id,
+        dp.first_name,
+        dp.last_name,
+        dp.email,
+        dp.phone,
+        dp.is_online,
+        dp.profile_photo_url,
+        dp.account_created_at as driver_joined,
+        dp.account_updated_at as last_active,
+        
+        -- Stats from driver_stats (computed via triggers)
+        ds.total_assigned,
+        ds.pending_count,
+        ds.assigned_count,
+        ds.in_transit_count,
+        ds.total_completed,
+        ds.cancelled_count,
+        ds.failed_count,
+        ds.week_completed,
+        ds.week_failed,
+        ds.total_revenue,
+        ds.week_revenue,
+        ds.success_rate,
+        ds.cancel_rate,
+        ds.avg_rating,
+        ds.rating_count,
+        ds.stats_updated_at
+      FROM driver_profiles dp
+      LEFT JOIN driver_stats ds ON ds.id = dp.id
+      ORDER BY dp.last_name, dp.first_name
+    `;
+    return await this.query<any>(query);
+  }
 }

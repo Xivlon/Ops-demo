@@ -327,6 +327,27 @@ const worker: ExportedHandler<Env> = {
         return errorResponse('Enhanced stats require driver stats worker', 'WORKER_REQUIRED', 400);
       }
 
+      // Get driver stats from driver_stats table (maintained by main app triggers)
+      if (path === '/api/drivers/stats' && method === 'GET') {
+        try {
+          const stats = await repos.drivers.getCachedStats();
+          await pool.end();
+          return jsonResponse({
+            success: true,
+            data: stats,
+            meta: { 
+              source: 'driver_stats table (real-time via triggers)',
+              count: stats.length,
+              timestamp: new Date().toISOString()
+            }
+          }, 200, true, origin);
+        } catch (error) {
+          console.error('Driver stats error:', error);
+          await pool.end();
+          return errorResponse('Failed to load driver stats', 'DRIVER_STATS_ERROR', 500);
+        }
+      }
+
       // Legacy query endpoint
       if (path === '/api/neon-query' && method === 'POST') {
         const pin = url.searchParams.get('pin');

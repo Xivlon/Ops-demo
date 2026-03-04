@@ -38,6 +38,9 @@
     ::-webkit-scrollbar-track { background: #0f172a; }
     ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
     ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    .stat-card { transition: all 0.2s ease; }
+    .stat-card:hover { transform: translateY(-2px); }
+    .stat-card.active { ring: 2px; ring-color: #22c55e; background: #334155; }
   </style>
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen font-sans selection:bg-green-500 selection:text-white">
@@ -56,18 +59,12 @@
                 </div>
             </div>
         </div>
-        <div class="flex items-center gap-3">
-          <button onclick="window.location.href='/drivers'" class="group bg-orange-700 hover:bg-orange-600 border border-orange-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2">
-            <i data-lucide="users" class="w-4 h-4"></i>
-            Driver Stats
+        <div class="flex items-center gap-2">
+          <button onclick="refreshData()" class="p-2.5 rounded-lg text-slate-400 hover:text-green-400 hover:bg-slate-800 transition-all" title="Refresh">
+            <i data-lucide="refresh-cw" class="w-5 h-5"></i>
           </button>
-          <button onclick="refreshData()" class="group bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-200 px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2">
-            <i data-lucide="refresh-cw" class="w-4 h-4 group-hover:rotate-180 transition-transform duration-500"></i>
-            Refresh Data
-          </button>
-          <button onclick="logout()" class="group bg-red-700 hover:bg-red-600 border border-red-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2">
-            <i data-lucide="log-out" class="w-4 h-4"></i>
-            Logout
+          <button onclick="logout()" class="p-2.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-slate-800 transition-all" title="Logout">
+            <i data-lucide="log-out" class="w-5 h-5"></i>
           </button>
         </div>
     </div>
@@ -77,7 +74,8 @@
     
     <div id="toast-container" class="fixed top-24 right-6 z-50 pointer-events-none"></div>
 
-    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4" id="stats-grid">
+    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4" id="stats-grid">
+        <div class="bg-slate-800 h-24 rounded-xl animate-pulse"></div>
         <div class="bg-slate-800 h-24 rounded-xl animate-pulse"></div>
         <div class="bg-slate-800 h-24 rounded-xl animate-pulse"></div>
         <div class="bg-slate-800 h-24 rounded-xl animate-pulse"></div>
@@ -90,20 +88,27 @@
       
       <div class="px-6 py-4 border-b border-slate-700 bg-slate-800/50 flex justify-between items-center backdrop-blur">
          <div class="flex items-center gap-4">
-             <h2 class="font-bold text-slate-200 text-lg flex items-center gap-2">
-                <i data-lucide="package" class="w-5 h-5 text-green-500"></i> Active Shipments
+             <h2 id="table-title" class="font-bold text-slate-200 text-lg flex items-center gap-2">
+                <i data-lucide="package" class="w-5 h-5 text-green-500"></i> <span id="title-text">Active Shipments</span>
              </h2>
              <span id="count-badge" class="bg-slate-700 text-slate-300 px-2.5 py-0.5 rounded-full text-xs font-bold border border-slate-600">0</span>
          </div>
          
          <div class="flex items-center gap-3">
-             <select id="statusFilter" onchange="renderTable()" class="bg-slate-900 border border-slate-600 text-slate-300 text-xs rounded-lg px-3 py-2 focus:border-green-500 outline-none cursor-pointer hover:bg-slate-900/80">
-                <option value="">All Statuses</option>
-                <option value="PENDING">Pending</option>
-                <option value="ASSIGNED">Assigned</option>
-                <option value="PICKED_UP">In-Transit</option>
-                <option value="DELIVERED">Delivered</option>
-             </select>
+             <button id="btn-clear-filter" onclick="clearStatusFilter()" class="hidden bg-slate-700 hover:bg-slate-600 text-slate-300 px-3 py-2 rounded-lg text-xs font-semibold transition-all flex items-center gap-2">
+                <i data-lucide="x" class="w-3 h-3"></i>
+                Clear Filter
+             </button>
+             <div class="relative">
+                <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500"></i>
+                <input 
+                  type="text" 
+                  id="searchInput" 
+                  placeholder="Search orders..." 
+                  oninput="renderTable()"
+                  class="bg-slate-900 border border-slate-600 text-slate-300 text-xs rounded-lg pl-9 pr-3 py-2 w-64 focus:border-green-500 outline-none placeholder:text-slate-600"
+                >
+             </div>
          </div>
       </div>
 
@@ -171,6 +176,106 @@
         window.location.href = '/login';
     }
 
+    // Current status filter (for card highlighting)
+    let currentStatusFilter = '';
+    
+    function setStatusFilter(status) {
+        currentStatusFilter = currentStatusFilter === status ? '' : status;
+        renderTable();
+        updateCardStyles();
+        
+        // Show/hide clear filter button
+        const clearBtn = document.getElementById('btn-clear-filter');
+        if (currentStatusFilter) {
+            clearBtn.classList.remove('hidden');
+        } else {
+            clearBtn.classList.add('hidden');
+        }
+    }
+    
+    function clearStatusFilter() {
+        currentStatusFilter = '';
+        renderTable();
+        updateCardStyles();
+        document.getElementById('btn-clear-filter').classList.add('hidden');
+    }
+    
+    function updateCardStyles() {
+        document.querySelectorAll('.stat-card').forEach(card => {
+            const cardStatus = card.dataset.status;
+            if (cardStatus === currentStatusFilter) {
+                card.classList.add('ring-2', 'ring-green-500', 'bg-slate-700');
+            } else {
+                card.classList.remove('ring-2', 'ring-green-500', 'bg-slate-700');
+            }
+        });
+    }
+
+    // Store latest stats data for re-rendering cards
+    let latestStatsData = null;
+    
+    function renderStatCards() {
+        if (!latestStatsData) return;
+        
+        const data = latestStatsData;
+        
+        // Count active orders by status (excluding FAILED urgency for active statuses)
+        const pendingCount = allShipments.filter(s => s.status === 'PENDING' && s.urgency !== 'FAILED').length;
+        const assignedCount = allShipments.filter(s => s.status === 'ASSIGNED' && s.urgency !== 'FAILED').length;
+        const inTransitCount = allShipments.filter(s => s.status === 'PICKED_UP' && s.urgency !== 'FAILED').length;
+        
+        // Count urgent orders (OVERDUE, CRITICAL, WARNING urgency) - exclude FAILED
+        const urgentCount = allShipments.filter(s => 
+            ['PENDING', 'ASSIGNED', 'PICKED_UP'].includes(s.status) && 
+            ['OVERDUE', 'CRITICAL', 'WARNING'].includes(s.urgency)
+        ).length;
+        
+        // Count failed orders (FAILED urgency - missed dropoff window)
+        const failedCount = allShipments.filter(s => 
+            ['PENDING', 'ASSIGNED', 'PICKED_UP'].includes(s.status) && 
+            s.urgency === 'FAILED'
+        ).length;
+        
+        const makeCard = (label, val, color, status = null, navigate = false) => {
+            if (navigate) {
+                // Active Drivers card - navigates to drivers page
+                return `<div onclick="window.location.href='/drivers'" class="stat-card bg-slate-800 rounded-xl p-4 border border-slate-700 relative overflow-hidden group hover:border-${color}-500/50 transition-all cursor-pointer hover:bg-slate-750">
+                       <div class="absolute top-0 right-0 w-16 h-16 bg-${color}-500/10 rounded-bl-full -mr-2 -mt-2 transition-transform group-hover:scale-110"></div>
+                       <div class="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">${label}</div>
+                       <div class="text-2xl font-black text-${color}-400 relative z-10">${val || 0}</div>
+                       </div>`;
+            }
+            
+            if (status) {
+                // Filterable stat cards
+                const isActive = currentStatusFilter === status;
+                const activeClass = isActive ? 'ring-2 ring-green-500 bg-slate-700' : '';
+                return `<div data-status="${status}" onclick="setStatusFilter('${status}')" class="stat-card ${activeClass} bg-slate-800 rounded-xl p-4 border border-slate-700 relative overflow-hidden group hover:border-${color}-500/50 transition-all cursor-pointer hover:bg-slate-750">
+                       <div class="absolute top-0 right-0 w-16 h-16 bg-${color}-500/10 rounded-bl-full -mr-2 -mt-2 transition-transform group-hover:scale-110"></div>
+                       <div class="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">${label}</div>
+                       <div class="text-2xl font-black text-${color}-400 relative z-10">${val || 0}</div>
+                       </div>`;
+            }
+            
+            // Non-clickable cards
+            return `<div class="bg-slate-800 rounded-xl p-4 border border-slate-700 relative overflow-hidden group">
+                   <div class="absolute top-0 right-0 w-16 h-16 bg-${color}-500/10 rounded-bl-full -mr-2 -mt-2"></div>
+                   <div class="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">${label}</div>
+                   <div class="text-2xl font-black text-${color}-400 relative z-10">${val || 0}</div>
+                   </div>`;
+        };
+
+        const grid = document.getElementById('stats-grid');
+        grid.innerHTML = 
+            makeCard('Pending', pendingCount, 'yellow', 'PENDING') +
+            makeCard('Assigned', assignedCount, 'blue', 'ASSIGNED') +
+            makeCard('In Transit', inTransitCount, 'purple', 'PICKED_UP') +
+            makeCard('Completed (30d)', data.delivered, 'green', 'DELIVERED') +
+            makeCard('Urgent', urgentCount, 'red', 'URGENT') +
+            makeCard('Failed', failedCount, 'slate', 'FAILED') +
+            makeCard('Active Drivers', (data.online_drivers || 0) + '/' + (data.total_drivers || 0), 'cyan', null, true);
+    }
+
     async function loadStats() {
         try {
             const res = await fetch('/api/dashboard/stats', {
@@ -185,25 +290,10 @@
             }
             
             const { data } = await res.json();
+            latestStatsData = data;
             
-            const makeCard = (label, val, color, clickable = false) => {
-                const cursor = clickable ? 'cursor-pointer' : '';
-                const onclick = clickable ? 'onclick="window.location.href=\'/drivers\'"' : '';
-                return `<div ${onclick} class="bg-slate-800 rounded-xl p-4 border border-slate-700 relative overflow-hidden group hover:border-${color}-500/50 transition-colors ${cursor}">
-                       <div class="absolute top-0 right-0 w-16 h-16 bg-${color}-500/10 rounded-bl-full -mr-2 -mt-2 transition-transform group-hover:scale-110"></div>
-                       <div class="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">${label}</div>
-                       <div class="text-2xl font-black text-${color}-400 relative z-10">${val || 0}</div>
-                       </div>`;
-            };
-
-            const grid = document.getElementById('stats-grid');
-            grid.innerHTML = 
-                makeCard('Pending', data.pending, 'yellow') +
-                makeCard('Assigned', data.assigned, 'blue') +
-                makeCard('In Transit', data.picked_up, 'purple') +
-                makeCard('Completed', data.delivered, 'green') +
-                makeCard('Revenue', '$' + parseFloat(data.total_revenue || 0).toFixed(2), 'emerald') +
-                makeCard('Active Drivers', (data.online_drivers || 0) + '/' + (data.total_drivers || 0), 'orange', true);
+            // Render cards with latest data
+            renderStatCards();
 
             document.getElementById('status-indicator').className = "w-2 h-2 rounded-full bg-green-500";
             document.getElementById('status-text').innerText = "Connected";
@@ -267,6 +357,9 @@
                 " | Next: " + nextRefresh.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
 
             renderTable();
+            
+            // Re-render stat cards to update urgent/failed counts
+            renderStatCards();
 
         } catch (e) { 
             console.error('Shipments load failed:', e);
@@ -286,15 +379,22 @@
         const code = type === 'pickup' ? s.origin_airport : s.destination_airport;
         const addr = type === 'pickup' ? s.pickup_address : s.dropoff_address;
 
+        let html = '<div class="flex flex-col gap-0.5 max-w-[140px]">';
+        
+        // Airport code badge
         if (code && code.length >= 3) {
-            return '<span class="font-black text-white bg-slate-700 px-1.5 rounded text-[10px] tracking-wide" title="' + (addr || '') + '">' + code + '</span>';
+            html += '<span class="font-black text-white bg-slate-700 px-2 py-0.5 rounded text-xs tracking-wide w-fit">' + code + '</span>';
         }
         
+        // Address with truncation
         if (addr && addr.length > 2) {
-            return '<span class="address-truncate text-slate-400" title="' + addr + '">' + addr + '</span>';
+            html += '<span class="address-truncate text-slate-300 text-xs" title="' + addr + '">' + addr + '</span>';
+        } else if (!code) {
+            html += '<span class="text-slate-600 text-xs italic">N/A</span>';
         }
-
-        return '<span class="text-slate-600 text-[10px] italic">N/A</span>';
+        
+        html += '</div>';
+        return html;
     }
 
     // Urgency configuration
@@ -331,11 +431,76 @@
 
     function renderTable() {
         const tbody = document.getElementById('table-body');
-        const filter = document.getElementById('statusFilter').value;
+        const statusFilter = currentStatusFilter;
+        const searchQuery = document.getElementById('searchInput').value.toLowerCase().trim();
         
-        let list = filter ? allShipments.filter(s => s.status === filter) : [...allShipments];
+        let list = [...allShipments];
+        
+        // Debug delivered orders
+        if (statusFilter === 'DELIVERED') {
+            console.log('All delivered orders:', allShipments.filter(s => s.status === 'DELIVERED').map(s => ({id: s.id.slice(0,8), urgency: s.urgency})));
+        }
+        
+        // Apply status/urgency filter
+        if (statusFilter) {
+            if (statusFilter === 'URGENT') {
+                // Urgent = OVERDUE, CRITICAL, WARNING (but NOT FAILED)
+                list = list.filter(s => 
+                    ['PENDING', 'ASSIGNED', 'PICKED_UP'].includes(s.status) && 
+                    ['OVERDUE', 'CRITICAL', 'WARNING'].includes(s.urgency)
+                );
+            } else if (statusFilter === 'FAILED') {
+                // Failed = FAILED urgency only
+                list = list.filter(s => 
+                    ['PENDING', 'ASSIGNED', 'PICKED_UP'].includes(s.status) && 
+                    s.urgency === 'FAILED'
+                );
+            } else {
+                // Normal status filters - for active orders, exclude FAILED urgency (they have their own filter)
+                // DELIVERED orders are already complete, so show all of them
+                if (statusFilter === 'DELIVERED') {
+                    list = list.filter(s => s.status === statusFilter);
+                } else {
+                    list = list.filter(s => s.status === statusFilter && s.urgency !== 'FAILED');
+                }
+            }
+        }
+        
+        // Apply search filter
+        if (searchQuery) {
+            list = list.filter(s => {
+                const searchFields = [
+                    s.id,
+                    s.customer_name,
+                    s.customer_email,
+                    s.customer_phone,
+                    s.origin_airport,
+                    s.destination_airport,
+                    s.pickup_address,
+                    s.dropoff_address,
+                    s.driver_name
+                ].filter(Boolean).join(' ').toLowerCase();
+                return searchFields.includes(searchQuery);
+            });
+        }
 
         list.sort((a, b) => {
+            // When showing all orders (no filter), sort by status priority:
+            // Active orders first (PENDING > ASSIGNED > PICKED_UP), then FAILED, then DELIVERED at bottom
+            if (!statusFilter) {
+                const statusPriority = { 'PENDING': 0, 'ASSIGNED': 1, 'PICKED_UP': 2, 'DELIVERED': 4 };
+                const priorityA = statusPriority[a.status] ?? 3;
+                const priorityB = statusPriority[b.status] ?? 3;
+                
+                // Within active orders, sort FAILED urgency to bottom of that group
+                if (priorityA === priorityB && priorityA < 3) {
+                    if (a.urgency === 'FAILED' && b.urgency !== 'FAILED') return 1;
+                    if (a.urgency !== 'FAILED' && b.urgency === 'FAILED') return -1;
+                }
+                
+                if (priorityA !== priorityB) return priorityA - priorityB;
+            }
+            
             // First sort by urgency priority (urgent items first)
             const urgencyDiff = getUrgencyPriority(a.urgency, a.status) - getUrgencyPriority(b.urgency, b.status);
             if (urgencyDiff !== 0) return urgencyDiff;
@@ -357,6 +522,31 @@
             if (valA > valB) return sortOrder[colKey] === 'asc' ? 1 : -1;
             return 0;
         });
+
+        // Update title and count based on filter
+        const titleText = document.getElementById('title-text');
+        const countBadge = document.getElementById('count-badge');
+        const totalCount = allShipments.length;
+        
+        const filterLabels = {
+            '': 'Active Shipments',
+            'PENDING': 'Pending Orders',
+            'ASSIGNED': 'Assigned Orders',
+            'PICKED_UP': 'In Transit Orders',
+            'DELIVERED': 'Completed Orders',
+            'URGENT': 'Urgent Orders',
+            'FAILED': 'Failed Orders'
+        };
+        
+        titleText.innerText = filterLabels[statusFilter] || 'Orders';
+        countBadge.innerText = list.length;
+        
+        // Highlight badge when filtered
+        if (statusFilter || searchQuery) {
+            countBadge.className = "bg-green-600 text-white px-2.5 py-0.5 rounded-full text-xs font-bold border border-green-500";
+        } else {
+            countBadge.className = "bg-slate-700 text-slate-300 px-2.5 py-0.5 rounded-full text-xs font-bold border border-slate-600";
+        }
 
         if (list.length === 0) {
             tbody.innerHTML = '<tr><td colspan="7" class="px-6 py-12 text-center text-slate-500 italic">No shipments found.</td></tr>';
@@ -380,7 +570,8 @@
         tbody.innerHTML = list.map(s => {
             // Get urgency styling
             const uConfig = urgencyConfig[s.urgency] || urgencyConfig['NORMAL'];
-            const showUrgency = ['PENDING', 'ASSIGNED'].includes(s.status) && s.urgency && s.urgency !== 'NORMAL';
+            // Show urgency badge for any non-normal urgency (including FAILED for PENDING/ASSIGNED/PICKED_UP)
+            const showUrgency = ['PENDING', 'ASSIGNED', 'PICKED_UP'].includes(s.status) && s.urgency && s.urgency !== 'NORMAL';
             
             // Status badge: show urgency color if urgent, otherwise standard status color
             const badgeClass = showUrgency 
@@ -388,7 +579,10 @@
                 : (stMap[s.status] || 'bg-slate-700 text-slate-400');
             
             const rowClass = showUrgency ? `border-l-4 ${uConfig.border}` : '';
-            const timeRemaining = s.pickup_at ? formatTimeRemaining(s.pickup_at) : '';
+            // For In-Transit orders, show time until dropoff; otherwise show time until pickup
+            const timeRemaining = (s.status === 'PICKED_UP' && s.dropoff_by)
+                ? formatTimeRemaining(s.dropoff_by)
+                : (s.pickup_at ? formatTimeRemaining(s.pickup_at) : '');
 
             let driverHtml = '';
             const dId = s.driver_id;
@@ -466,23 +660,26 @@
                      '</td>' +
                      '<td class="px-6 py-4 whitespace-nowrap">' +
                      '<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border ' + badgeClass + '">' +
-                     (showUrgency ? '<span class="w-1.5 h-1.5 rounded-full ' + uConfig.bg + '"></span>' + uConfig.label : s.status) +
+                     (showUrgency ? '<span class="w-1.5 h-1.5 rounded-full ' + uConfig.bg + '"></span>' + uConfig.label : (s.status === 'PICKED_UP' ? 'In Transit' : s.status)) +
                      '</span>' +
                      '</td>' +
                      '<td class="px-6 py-4 whitespace-nowrap">' +
                      driverHtml +
                      '</td>' +
-                     '<td class="px-6 py-4 whitespace-nowrap text-xs text-slate-300">' +
-                     '<div class="flex items-center gap-2">' +
+                     '<td class="px-6 py-4">' +
+                     '<div class="flex flex-col gap-2 max-w-[140px]">' +
                      fmtLoc(s, 'pickup') +
-                     '<i data-lucide="arrow-right" class="w-3 h-3 text-slate-600"></i>' +
+                     '<div class="flex items-center justify-center gap-1 text-slate-500 py-1">' +
+                     '<i data-lucide="arrow-down" class="w-3 h-3"></i>' +
+                     '<span class="text-[10px] uppercase tracking-wide">to</span>' +
+                     '</div>' +
                      fmtLoc(s, 'dropoff') +
                      '</div>' +
                      '</td>' +
                      '<td class="px-6 py-4 whitespace-nowrap">' +
-                     '<div class="flex flex-col gap-1">' +
-                     (s.pickup_at ? '<div class="text-[10px]"><span class="text-slate-500">Pickup:</span> <span class="text-slate-300">' + new Date(s.pickup_at).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}) + '</span></div>' : '') +
-                     (s.dropoff_by ? '<div class="text-[10px]"><span class="text-slate-500">Dropoff:</span> <span class="text-slate-300">' + new Date(s.dropoff_by).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}) + '</span></div>' : '') +
+                     '<div class="flex flex-col gap-1.5">' +
+                     (s.pickup_at ? '<div class="text-xs"><span class="text-slate-500">Pickup:</span> <span class="text-slate-200 font-medium">' + new Date(s.pickup_at).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}) + '</span></div>' : '') +
+                     (s.dropoff_by ? '<div class="text-xs"><span class="text-slate-500">Dropoff:</span> <span class="text-slate-200 font-medium">' + new Date(s.dropoff_by).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}) + '</span></div>' : '') +
                      '</div>' +
                      '</td>' +
                      '<td class="px-6 py-4 whitespace-nowrap">' +
