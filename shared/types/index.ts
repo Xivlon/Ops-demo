@@ -68,7 +68,7 @@ export interface Shipment {
   urgency?: UrgencyLevel;
 }
 
-export type ShipmentStatus = 'PENDING' | 'ASSIGNED' | 'PICKED_UP' | 'DELIVERED' | 'CANCELLED';
+export type ShipmentStatus = 'PENDING' | 'ASSIGNED' | 'IN_TRANSIT' | 'DELIVERED' | 'CANCELLED';
 
 // Driver types - matching Neon schema
 export interface Driver {

@@ -81,7 +81,7 @@ export class ShipmentRepository extends BaseRepository {
         SELECT 
           COUNT(*) FILTER (WHERE status = 'PENDING') as pending,
           COUNT(*) FILTER (WHERE status = 'ASSIGNED') as assigned,
-          COUNT(*) FILTER (WHERE status = 'PICKED_UP') as picked_up,
+          COUNT(*) FILTER (WHERE status = 'IN_TRANSIT') as picked_up,
           COUNT(*) FILTER (WHERE status = 'DELIVERED') as delivered,
           COALESCE(SUM(price_cents) FILTER (WHERE status = 'DELIVERED'), 0) / 100.0 as total_revenue,
           (SELECT COUNT(*) FROM driver_profiles WHERE is_online = true) as online_drivers,

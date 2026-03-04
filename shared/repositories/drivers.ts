@@ -160,7 +160,7 @@ export class DriverRepository extends BaseRepository {
         -- Count shipments by status
         COUNT(DISTINCT CASE WHEN s.status = 'PENDING' THEN s.id END) as pending_count,
         COUNT(DISTINCT CASE WHEN s.status = 'ASSIGNED' THEN s.id END) as assigned_count,
-        COUNT(DISTINCT CASE WHEN s.status = 'PICKED_UP' THEN s.id END) in_transit_count,
+        COUNT(DISTINCT CASE WHEN s.status = 'IN_TRANSIT' THEN s.id END) in_transit_count,
         COUNT(DISTINCT CASE WHEN s.status = 'DELIVERED' THEN s.id END) as total_completed,
         COUNT(DISTINCT s.id) as total_assigned,
         -- Revenue (sum of shipment prices for delivered shipments, converting cents to dollars)

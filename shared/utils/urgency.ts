@@ -124,5 +124,5 @@ export function formatTimeRemaining(targetTime: string | null | undefined): stri
 
 export function shouldShowUrgency(status: string): boolean {
   // Show urgency for pending, assigned, AND in-transit orders
-  return ['PENDING', 'ASSIGNED', 'PICKED_UP'].includes(status);
+  return ['PENDING', 'ASSIGNED', 'IN_TRANSIT'].includes(status);
 }
