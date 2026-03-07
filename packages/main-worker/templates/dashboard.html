@@ -135,7 +135,7 @@
                 Route <span class="sort-indicator text-green-400" data-sort-key="4"></span>
               </th>
               <th class="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
-                Times
+                Deadline
               </th>
               <th class="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
                 Customer Info
@@ -158,23 +158,6 @@
       <div class="bg-slate-900 px-6 py-2 border-t border-slate-700 text-[10px] text-slate-500 flex justify-between items-center">
         <span>SECURE OPS ENVIRONMENT</span>
         <span id="last-updated">Updating...</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- Photo Modal for viewing pickup + delivery photos -->
-  <div id="photo-modal" class="fixed inset-0 bg-black/90 z-50 hidden items-center justify-center p-8" onclick="closePhotoModal()">
-    <button class="absolute top-4 right-4 text-white/70 hover:text-white p-2" onclick="event.stopPropagation(); closePhotoModal()">
-      <i data-lucide="x" class="w-6 h-6"></i>
-    </button>
-    <div class="flex gap-4 max-w-5xl w-full" onclick="event.stopPropagation()">
-      <div class="flex-1">
-        <img id="modal-pickup-photo" src="" alt="Pickup photo" class="w-full h-[70vh] object-contain rounded-lg bg-slate-800">
-        <p class="text-center text-slate-400 text-sm mt-2">Pickup Photo</p>
-      </div>
-      <div class="flex-1">
-        <img id="modal-delivery-photo" src="" alt="Delivery photo" class="w-full h-[70vh] object-contain rounded-lg bg-slate-800">
-        <p class="text-center text-slate-400 text-sm mt-2">Delivery Photo</p>
       </div>
     </div>
   </div>
@@ -251,10 +234,10 @@
             ['OVERDUE', 'CRITICAL', 'WARNING'].includes(s.urgency)
         ).length;
         
-        // Count failed orders (status FAILED or FAILED urgency)
+        // Count failed orders (FAILED urgency - missed dropoff window)
         const failedCount = allShipments.filter(s => 
-            s.status === 'FAILED' || 
-            (['PENDING', 'ASSIGNED', 'IN_TRANSIT'].includes(s.status) && s.urgency === 'FAILED')
+            ['PENDING', 'ASSIGNED', 'IN_TRANSIT'].includes(s.status) && 
+            s.urgency === 'FAILED'
         ).length;
         
         const makeCard = (label, val, color, status = null, navigate = false) => {
@@ -471,10 +454,10 @@
                     ['OVERDUE', 'CRITICAL', 'WARNING'].includes(s.urgency)
                 );
             } else if (statusFilter === 'FAILED') {
-                // Failed = status FAILED or FAILED urgency
+                // Failed = FAILED urgency only
                 list = list.filter(s => 
-                    s.status === 'FAILED' || 
-                    (['PENDING', 'ASSIGNED', 'IN_TRANSIT'].includes(s.status) && s.urgency === 'FAILED')
+                    ['PENDING', 'ASSIGNED', 'IN_TRANSIT'].includes(s.status) && 
+                    s.urgency === 'FAILED'
                 );
             } else {
                 // Normal status filters - for active orders, exclude FAILED urgency (they have their own filter)
@@ -578,8 +561,7 @@
             'PENDING': 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
             'ASSIGNED': 'bg-blue-500/10 text-blue-400 border-blue-500/20',
             'IN_TRANSIT': 'bg-purple-500/10 text-purple-400 border-purple-500/20',
-            'DELIVERED': 'bg-green-500/10 text-green-400 border-green-500/20',
-            'FAILED': 'bg-red-500/10 text-red-400 border-red-500/20'
+            'DELIVERED': 'bg-green-500/10 text-green-400 border-green-500/20'
         };
 
         const urgencyStMap = {
@@ -646,13 +628,6 @@
                 driverHtml = '<span class="text-slate-600 text-xs italic">Unassigned</span>';
             }
 
-            // Add "Mark as Failed" button for active orders
-            const canFail = ['PENDING', 'ASSIGNED', 'IN_TRANSIT'].includes(s.status);
-            const failButtonHtml = canFail ? 
-                '<button onclick="event.stopPropagation(); markAsFailed(\'' + s.id + '\', \'' + (s.customer_name || 'this order') + '\');" class="mt-1.5 inline-flex items-center gap-1 text-[10px] text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 px-2 py-1 rounded transition-colors" title="Mark order as failed">' +
-                    '<i data-lucide="x-circle" class="w-3 h-3"></i>Fail' +
-                '</button>' : '';
-
             let customerInfoParts = [];
             const custName = escapeHtml(s.customer_name) || 'Customer';
             const custEmail = escapeHtml(s.customer_email);
@@ -678,19 +653,18 @@
                     '</div>';
             }
             
-            // 3-phase photo icon: none (image-off), pickup only (image), delivery/both (images)
-            let photoIconHtml = '';
-            if (s.delivery_photo_url) {
-                // Delivery complete - click to view both photos in modal
-                photoIconHtml = '<button onclick="event.stopPropagation(); openPhotoModal(\'' + escapeHtml(s.pickup_photo_url || '') + '\', \'' + escapeHtml(s.delivery_photo_url) + '\')" class="inline-flex items-center gap-1 text-[10px] text-green-400 hover:text-green-300 bg-green-500/10 hover:bg-green-500/20 px-2 py-1 rounded transition-colors" title="View photos"><i data-lucide="images" class="w-3 h-3"></i>Photos</button>';
-            } else if (s.pickup_photo_url) {
-                // Only pickup photo
-                photoIconHtml = '<a href="' + escapeHtml(s.pickup_photo_url) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" class="inline-flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 px-2 py-1 rounded transition-colors" title="View pickup photo"><i data-lucide="image" class="w-3 h-3"></i>Photo</a>';
-            } else {
-                // No photos yet
-                photoIconHtml = '<span class="inline-flex items-center gap-1 text-[10px] text-slate-500 bg-slate-700/50 px-2 py-1 rounded" title="No photos yet"><i data-lucide="image-off" class="w-3 h-3"></i>None</span>';
+            // Photo links - show separate icons for pickup and delivery when both exist
+            let photoLinksHtml = '';
+            if (s.pickup_photo_url || s.delivery_photo_url) {
+                photoLinksHtml = '<div class="flex items-center gap-2 mt-2 pt-2 border-t border-slate-700/50">' +
+                    (s.pickup_photo_url 
+                        ? '<a href="' + escapeHtml(s.pickup_photo_url) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" class="inline-flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 px-2 py-1 rounded transition-colors" title="View pickup photo"><i data-lucide="upload" class="w-4 h-4"></i>Pickup</a>'
+                        : '') +
+                    (s.delivery_photo_url 
+                        ? '<a href="' + escapeHtml(s.delivery_photo_url) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" class="inline-flex items-center gap-1.5 text-xs text-green-400 hover:text-green-300 bg-green-500/10 hover:bg-green-500/20 px-2 py-1 rounded transition-colors" title="View delivery photo"><i data-lucide="package-check" class="w-4 h-4"></i>Delivery</a>'
+                        : '') +
+                '</div>';
             }
-            const photoLinksHtml = '<div class="flex items-center gap-2 mt-2 pt-2 border-t border-slate-700/50">' + photoIconHtml + '</div>';
             
             return '<tr class="shipment-row ' + rowClass + ' group">' +
                      '<td class="px-6 py-4 whitespace-nowrap">' +
@@ -707,10 +681,7 @@
                      '</span>' +
                      '</td>' +
                      '<td class="px-6 py-4 whitespace-nowrap">' +
-                     '<div class="flex flex-col items-start">' +
                      driverHtml +
-                     failButtonHtml +
-                     '</div>' +
                      '</td>' +
                      '<td class="px-6 py-4">' +
                      '<div class="flex flex-col gap-2 max-w-[140px]">' +
@@ -724,8 +695,8 @@
                      '</td>' +
                      '<td class="px-6 py-4 whitespace-nowrap">' +
                      '<div class="flex flex-col gap-1.5">' +
-                     (s.pickup_at ? '<div class="text-xs"><span class="text-slate-500">Pickup:</span> <span class="text-slate-200 font-medium">' + new Date(s.pickup_at).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}) + '</span></div>' : '') +
-                     (s.dropoff_by ? '<div class="text-xs"><span class="text-slate-500">Dropoff:</span> <span class="text-slate-200 font-medium">' + new Date(s.dropoff_by).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}) + '</span></div>' : '') +
+                     (s.pickup_at ? '<div class="text-sm"><span class="text-slate-500">Pickup:</span> <span class="text-slate-200 font-medium">' + new Date(s.pickup_at).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}) + '</span></div>' : '') +
+                     (s.dropoff_by ? '<div class="text-sm"><span class="text-slate-500">Dropoff:</span> <span class="text-slate-200 font-medium">' + new Date(s.dropoff_by).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}) + '</span></div>' : '') +
                      photoLinksHtml +
                      '</div>' +
                      '</td>' +
@@ -806,30 +777,6 @@
         }
     }
 
-    function openPhotoModal(pickupUrl, deliveryUrl) {
-        const modal = document.getElementById('photo-modal');
-        const pickupImg = document.getElementById('modal-pickup-photo');
-        const deliveryImg = document.getElementById('modal-delivery-photo');
-        
-        pickupImg.src = pickupUrl || '';
-        pickupImg.parentElement.style.display = pickupUrl ? 'block' : 'none';
-        
-        deliveryImg.src = deliveryUrl || '';
-        deliveryImg.parentElement.style.display = deliveryUrl ? 'block' : 'none';
-        
-        modal.classList.remove('hidden');
-        modal.classList.add('flex');
-        document.body.style.overflow = 'hidden';
-        lucide.createIcons();
-    }
-    
-    function closePhotoModal() {
-        const modal = document.getElementById('photo-modal');
-        modal.classList.add('hidden');
-        modal.classList.remove('flex');
-        document.body.style.overflow = '';
-    }
-
     function showToast(msg, color) {
         const container = document.getElementById('toast-container');
         const div = document.createElement('div');
@@ -863,11 +810,6 @@
         refreshInterval = setInterval(safeRefresh, 90000);
     }
     
-    // Close photo modal on Escape key
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') closePhotoModal();
-    });
-
     // Initial load
     safeRefresh();
     startAutoRefresh();
