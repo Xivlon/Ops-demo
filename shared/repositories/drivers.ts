@@ -324,6 +324,7 @@ export class DriverRepository extends BaseRepository {
   }
 
   // Get driver stats - join driver_profiles (real-time profile data) with driver_stats (computed stats)
+  // All calculations are done by database triggers - no application-side calculations
   async getCachedStats(): Promise<any[]> {
     const query = `
       SELECT 
@@ -348,8 +349,11 @@ export class DriverRepository extends BaseRepository {
         ds.failed_count,
         ds.week_completed,
         ds.week_failed,
+        ds.month_completed,
+        ds.month_failed,
         ds.total_revenue,
         ds.week_revenue,
+        ds.month_revenue,
         ds.success_rate,
         ds.cancel_rate,
         ds.avg_rating,
@@ -359,6 +363,10 @@ export class DriverRepository extends BaseRepository {
       LEFT JOIN driver_stats ds ON ds.id = dp.id
       ORDER BY dp.last_name, dp.first_name
     `;
-    return await this.query<any>(query);
+    const drivers = await this.query<any>(query);
+    
+    // Return raw data from database - no calculations needed
+    // Frontend will handle display formatting
+    return drivers;
   }
 }

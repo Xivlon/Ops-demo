@@ -287,14 +287,13 @@
       } else if (filterValue === 'high-performers') {
         filtered = filtered.filter(d => {
           const successRate = parseFloat(d.success_rate);
-          const weekCompleted = parseInt(d.week_completed) || 0;
-          return !isNaN(successRate) && successRate >= 90 && weekCompleted >= 20;
+          return !isNaN(successRate) && successRate >= 90;
         });
       } else if (filterValue === 'needs-attention') {
         filtered = filtered.filter(d => {
           const successRate = parseFloat(d.success_rate);
-          const weekCompleted = parseInt(d.week_completed) || 0;
-          return isNaN(successRate) || successRate < 70 || weekCompleted < 5;
+          const cancelRate = parseFloat(d.cancel_rate);
+          return isNaN(successRate) || successRate < 70 || (!isNaN(cancelRate) && cancelRate > 20);
         });
       }
       
@@ -346,19 +345,8 @@
                                   ? (successRate >= 90 ? 'green' : successRate >= 70 ? 'yellow' : 'red')
                                   : 'slate';
         
-        const monthSuccessRate = driver.month_success_rate !== null ? parseFloat(driver.month_success_rate).toFixed(1) : null;
-        const monthSuccessRateDisplay = monthSuccessRate !== null ? monthSuccessRate + '%' : 'N/A';
-        const monthSuccessRateColor = monthSuccessRate !== null 
-                                       ? (monthSuccessRate >= 90 ? 'green' : monthSuccessRate >= 70 ? 'yellow' : 'red')
-                                       : 'slate';
-        
-        const weekSuccessRate = driver.week_success_rate !== null ? parseFloat(driver.week_success_rate).toFixed(1) : null;
-        const weekSuccessRateDisplay = weekSuccessRate !== null ? weekSuccessRate + '%' : 'N/A';
-        
         const cancelRate = driver.cancel_rate !== null ? parseFloat(driver.cancel_rate).toFixed(1) + '%' : 'N/A';
-        const monthCancelRate = driver.month_cancel_rate !== null ? parseFloat(driver.month_cancel_rate).toFixed(1) : null;
-        const monthCancelRateDisplay = monthCancelRate !== null ? monthCancelRate + '%' : 'N/A';
-        const monthCancelRateColor = monthCancelRate !== null && monthCancelRate > 10 ? 'red' : 'slate';
+        const cancelRateColor = driver.cancel_rate !== null && parseFloat(driver.cancel_rate) > 10 ? 'red' : 'slate';
         
         const totalRevenue = (parseFloat(driver.total_revenue) || 0).toFixed(2);
         const monthRevenue = (parseFloat(driver.month_revenue) || 0).toFixed(2);
@@ -393,16 +381,19 @@
               '<div class="text-xl font-bold">' + (driver.total_assigned || 0) + '</div>' +
             '</div>' +
             '<div class="bg-slate-900/50 rounded-lg p-3">' +
-              '<div class="text-xs text-slate-400">All-Time Success</div>' +
+              '<div class="text-xs text-slate-400">Total Completed</div>' +
+              '<div class="text-xl font-bold">' + (driver.total_completed || 0) + '</div>' +
+            '</div>' +
+          '</div>' +
+          
+          '<div class="grid grid-cols-2 gap-3 mb-3">' +
+            '<div class="bg-slate-900/50 rounded-lg p-3 border border-' + successRateColor + '-500/30">' +
+              '<div class="text-xs text-slate-400">Success Rate</div>' +
               '<div class="text-xl font-bold text-' + successRateColor + '-400">' + successRateDisplay + '</div>' +
             '</div>' +
-            '<div class="bg-slate-900/50 rounded-lg p-3">' +
-              '<div class="text-xs text-slate-400">All-Time Cancel</div>' +
-              '<div class="text-xl font-bold text-slate-400">' + cancelRate + '</div>' +
-            '</div>' +
-            '<div class="bg-slate-900/50 rounded-lg p-3">' +
-              '<div class="text-xs text-slate-400">Rating</div>' +
-              '<div class="text-xl font-bold text-slate-400">' + (driver.avg_rating || 0).toFixed(1) + ' ★</div>' +
+            '<div class="bg-slate-900/50 rounded-lg p-3 border border-' + cancelRateColor + '-500/30">' +
+              '<div class="text-xs text-slate-400">Cancel Rate</div>' +
+              '<div class="text-xl font-bold text-' + cancelRateColor + '-400">' + cancelRate + '</div>' +
             '</div>' +
           '</div>' +
           
@@ -421,17 +412,6 @@
             '</div>' +
           '</div>' +
           
-          '<div class="grid grid-cols-2 gap-3 mb-3">' +
-            '<div class="bg-slate-900/50 rounded-lg p-3 border border-' + monthSuccessRateColor + '-500/30">' +
-              '<div class="text-xs text-slate-400">30-Day Success Rate</div>' +
-              '<div class="text-xl font-bold text-' + monthSuccessRateColor + '-400">' + monthSuccessRateDisplay + '</div>' +
-            '</div>' +
-            '<div class="bg-slate-900/50 rounded-lg p-3 border border-' + monthCancelRateColor + '-500/30">' +
-              '<div class="text-xs text-slate-400">30-Day Cancel Rate</div>' +
-              '<div class="text-xl font-bold text-' + monthCancelRateColor + '-400">' + monthCancelRateDisplay + '</div>' +
-            '</div>' +
-          '</div>' +
-          
           '<div class="grid grid-cols-3 gap-2 mb-3">' +
             '<div class="bg-slate-900/50 rounded-lg p-2">' +
               '<div class="text-xs text-slate-400">Weekly Completed</div>' +
@@ -442,8 +422,8 @@
               '<div class="text-lg font-bold">' + (driver.month_completed || 0) + '</div>' +
             '</div>' +
             '<div class="bg-slate-900/50 rounded-lg p-2">' +
-              '<div class="text-xs text-slate-400">Weekly Success</div>' +
-              '<div class="text-lg font-bold text-blue-400">' + weekSuccessRateDisplay + '</div>' +
+              '<div class="text-xs text-slate-400">Rating</div>' +
+              '<div class="text-lg font-bold text-yellow-400">' + (driver.avg_rating || 0).toFixed(1) + ' ★</div>' +
             '</div>' +
           '</div>' +
           

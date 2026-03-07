@@ -284,30 +284,25 @@ const worker: ExportedHandler<Env> = {
         return jsonResponse({ success: true, data: drivers }, 200, true, origin);
       }
 
-      // Driver stats (detailed array for driver stats page) - try proxy first, fallback to direct
+      // Get driver stats from driver_stats table only (no calculations)
       if (path === '/api/drivers/stats' && method === 'GET') {
-        if (USE_DRIVER_STATS_WORKER) {
-          try {
-            const response = await proxyToDriverStatsWorker('/api/drivers/stats/live', origin);
-            await pool.end(); // Close pool before returning
-            return response;
-          } catch (proxyError) {
-            console.log('Proxy failed, falling back to direct query:', proxyError);
-            // Continue to fallback below
-          }
+        try {
+          const stats = await repos.drivers.getCachedStats();
+          await pool.end();
+          return jsonResponse({
+            success: true,
+            data: stats,
+            meta: { 
+              source: 'driver_stats table',
+              count: stats.length,
+              timestamp: new Date().toISOString()
+            }
+          }, 200, true, origin);
+        } catch (error) {
+          console.error('Driver stats error:', error);
+          await pool.end();
+          return errorResponse('Failed to load driver stats', 'DRIVER_STATS_ERROR', 500);
         }
-        // Fallback to direct query - returns array of drivers with detailed stats
-        const stats = await repos.drivers.getDriverDetailedStats();
-        await pool.end(); // Close pool after request
-        return jsonResponse({ 
-          success: true, 
-          data: stats,
-          meta: { 
-            source: 'direct-fallback', 
-            timestamp: new Date().toISOString(),
-            count: stats.length
-          }
-        }, 200, true, origin);
       }
 
       // Enhanced driver stats endpoint (only available via worker)
@@ -325,27 +320,6 @@ const worker: ExportedHandler<Env> = {
         }
         await pool.end();
         return errorResponse('Enhanced stats require driver stats worker', 'WORKER_REQUIRED', 400);
-      }
-
-      // Get driver stats from driver_stats table (maintained by main app triggers)
-      if (path === '/api/drivers/stats' && method === 'GET') {
-        try {
-          const stats = await repos.drivers.getCachedStats();
-          await pool.end();
-          return jsonResponse({
-            success: true,
-            data: stats,
-            meta: { 
-              source: 'driver_stats table (real-time via triggers)',
-              count: stats.length,
-              timestamp: new Date().toISOString()
-            }
-          }, 200, true, origin);
-        } catch (error) {
-          console.error('Driver stats error:', error);
-          await pool.end();
-          return errorResponse('Failed to load driver stats', 'DRIVER_STATS_ERROR', 500);
-        }
       }
 
       // Legacy query endpoint
