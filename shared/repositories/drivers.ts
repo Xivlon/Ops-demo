@@ -350,7 +350,6 @@ export class DriverRepository extends BaseRepository {
         ds.week_completed,
         ds.week_failed,
         ds.month_completed,
-        ds.month_failed,
         ds.total_revenue,
         ds.week_revenue,
         ds.month_revenue,

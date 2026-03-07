@@ -351,6 +351,7 @@
         const totalRevenue = (parseFloat(driver.total_revenue) || 0).toFixed(2);
         const monthRevenue = (parseFloat(driver.month_revenue) || 0).toFixed(2);
         const weekRevenue = (parseFloat(driver.week_revenue) || 0).toFixed(2);
+        const avgRating = (parseFloat(driver.avg_rating) || 0).toFixed(1);
         
         const lastActive = driver.last_active ? new Date(driver.last_active).toLocaleDateString() : 'N/A';
         const driverSince = driver.driver_joined ? new Date(driver.driver_joined).toLocaleDateString() : 'N/A';
@@ -423,7 +424,7 @@
             '</div>' +
             '<div class="bg-slate-900/50 rounded-lg p-2">' +
               '<div class="text-xs text-slate-400">Rating</div>' +
-              '<div class="text-lg font-bold text-yellow-400">' + (driver.avg_rating || 0).toFixed(1) + ' ★</div>' +
+              '<div class="text-lg font-bold text-yellow-400">' + avgRating + ' ★</div>' +
             '</div>' +
           '</div>' +
           
