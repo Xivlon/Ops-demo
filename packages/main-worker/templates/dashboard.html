@@ -583,7 +583,6 @@
                 : (stMap[s.status] || 'bg-slate-700 text-slate-400');
             
             const rowClass = showUrgency ? `border-l-4 ${uConfig.border}` : '';
-            const isExpanded = expandedRowId === s.id;
             // For In-Transit orders, show time until dropoff; otherwise show time until pickup
             const timeRemaining = (s.status === 'IN_TRANSIT' && s.dropoff_by)
                 ? formatTimeRemaining(s.dropoff_by)
