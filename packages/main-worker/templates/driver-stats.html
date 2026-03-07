@@ -351,7 +351,16 @@
         const totalRevenue = (parseFloat(driver.total_revenue) || 0).toFixed(2);
         const monthRevenue = (parseFloat(driver.month_revenue) || 0).toFixed(2);
         const weekRevenue = (parseFloat(driver.week_revenue) || 0).toFixed(2);
-        const avgRating = (parseFloat(driver.avg_rating) || 0).toFixed(1);
+        
+        // Calculate rating based on success rate (+weight) and cancel rate (-weight)
+        const successRateVal = parseFloat(driver.success_rate) || 0;
+        const cancelRateVal = parseFloat(driver.cancel_rate) || 0;
+        // Formula: 1 + success_rate/25 - cancel_rate/23
+        // Cancel rate hurts more than success rate helps
+        let calcRating = 1.0 + (successRateVal / 25) - (cancelRateVal / 23);
+        calcRating = Math.max(1.0, Math.min(5.0, calcRating));
+        const displayRating = calcRating.toFixed(1);
+        const ratingColor = calcRating >= 4.0 ? 'yellow' : calcRating >= 3.0 ? 'slate' : 'red';
         
         const lastActive = driver.last_active ? new Date(driver.last_active).toLocaleDateString() : 'N/A';
         const driverSince = driver.driver_joined ? new Date(driver.driver_joined).toLocaleDateString() : 'N/A';
@@ -387,6 +396,21 @@
             '</div>' +
           '</div>' +
           
+          '<div class="grid grid-cols-3 gap-2 mb-3">' +
+            '<div class="bg-slate-900/50 rounded-lg p-2">' +
+              '<div class="text-xs text-slate-400">Monthly Completed</div>' +
+              '<div class="text-lg font-bold">' + (driver.month_completed || 0) + '</div>' +
+            '</div>' +
+            '<div class="bg-slate-900/50 rounded-lg p-2">' +
+              '<div class="text-xs text-slate-400">Cancelled Count</div>' +
+              '<div class="text-lg font-bold text-red-400">' + (driver.cancelled_count || 0) + '</div>' +
+            '</div>' +
+            '<div class="bg-slate-900/50 rounded-lg p-2">' +
+              '<div class="text-xs text-slate-400">Rating</div>' +
+              '<div class="text-lg font-bold text-' + ratingColor + '-400">' + displayRating + ' ★</div>' +
+            '</div>' +
+          '</div>' +
+          
           '<div class="grid grid-cols-2 gap-3 mb-3">' +
             '<div class="bg-slate-900/50 rounded-lg p-3 border border-' + successRateColor + '-500/30">' +
               '<div class="text-xs text-slate-400">Success Rate</div>' +
@@ -410,21 +434,6 @@
             '<div class="bg-slate-900/50 rounded-lg p-2">' +
               '<div class="text-xs text-slate-400">Weekly Revenue</div>' +
               '<div class="text-lg font-bold text-emerald-400">$' + weekRevenue + '</div>' +
-            '</div>' +
-          '</div>' +
-          
-          '<div class="grid grid-cols-3 gap-2 mb-3">' +
-            '<div class="bg-slate-900/50 rounded-lg p-2">' +
-              '<div class="text-xs text-slate-400">Weekly Completed</div>' +
-              '<div class="text-lg font-bold">' + (driver.week_completed || 0) + '</div>' +
-            '</div>' +
-            '<div class="bg-slate-900/50 rounded-lg p-2">' +
-              '<div class="text-xs text-slate-400">Monthly Completed</div>' +
-              '<div class="text-lg font-bold">' + (driver.month_completed || 0) + '</div>' +
-            '</div>' +
-            '<div class="bg-slate-900/50 rounded-lg p-2">' +
-              '<div class="text-xs text-slate-400">Rating</div>' +
-              '<div class="text-lg font-bold text-yellow-400">' + avgRating + ' ★</div>' +
             '</div>' +
           '</div>' +
           
