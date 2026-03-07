@@ -305,6 +305,26 @@ const worker: ExportedHandler<Env> = {
         }
       }
 
+      // Get total revenue from shipments table (calculated from price_cents)
+      if (path === '/api/drivers/revenue' && method === 'GET') {
+        try {
+          const totalRevenue = await repos.drivers.getTotalRevenue();
+          await pool.end();
+          return jsonResponse({
+            success: true,
+            data: { total_revenue: totalRevenue },
+            meta: { 
+              source: 'shipments table (price_cents)',
+              timestamp: new Date().toISOString()
+            }
+          }, 200, true, origin);
+        } catch (error) {
+          console.error('Revenue error:', error);
+          await pool.end();
+          return errorResponse('Failed to load revenue', 'REVENUE_ERROR', 500);
+        }
+      }
+
       // Enhanced driver stats endpoint (only available via worker)
       if (path === '/api/drivers/stats/enhanced' && method === 'GET') {
         if (USE_DRIVER_STATS_WORKER) {

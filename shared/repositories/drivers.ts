@@ -368,4 +368,15 @@ export class DriverRepository extends BaseRepository {
     // Frontend will handle display formatting
     return drivers;
   }
+
+  // Calculate total revenue from shipments table (price_cents column)
+  async getTotalRevenue(): Promise<number> {
+    const query = `
+      SELECT COALESCE(SUM(price_cents), 0) as total_cents
+      FROM shipments
+      WHERE status = 'DELIVERED'
+    `;
+    const result = await this.query<{ total_cents: string }>(query);
+    return parseInt(result[0]?.total_cents || '0', 10) / 100; // Convert cents to dollars
+  }
 }
