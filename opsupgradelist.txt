@@ -1,0 +1,2 @@
+ increase text size for times column content,
+

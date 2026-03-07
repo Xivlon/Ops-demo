@@ -14,6 +14,7 @@ invocation_logs = true
 [vars]
 DATABASE_URL = 'postgresql://neondb_owner:npg_wrA2IV4GaHzD@ep-proud-cake-a4m2vdkf-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require'
 JWT_EXPIRY_HOURS = '24'
+ADMIN_PIN = '1234'
 
 # Environment-specific configuration
 [env.staging]
