@@ -75,6 +75,24 @@ export class ShipmentRepository extends BaseRepository {
     return result.length > 0;
   }
 
+  async markAsFailed(shipmentId: string, reason?: string): Promise<boolean> {
+    const sql = `
+      UPDATE shipments 
+      SET status = 'FAILED', 
+          updated_at = NOW(),
+          notes = CASE 
+            WHEN notes IS NULL OR notes = '' THEN $2
+            ELSE notes || E'\n\n[FAILED] ' || $2
+          END
+      WHERE id = $1 
+        AND status NOT IN ('DELIVERED', 'FAILED')
+      RETURNING id
+    `;
+    const failureNote = reason || 'Order marked as failed by ops';
+    const result = await this.query<{ id: string }>(sql, [shipmentId, failureNote]);
+    return result.length > 0;
+  }
+
   async getDashboardStats(days = 30): Promise<DashboardStats> {
     try {
       const sql = `

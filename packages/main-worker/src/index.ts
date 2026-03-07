@@ -246,6 +246,23 @@ const worker: ExportedHandler<Env> = {
         return jsonResponse({ success: true, data: { message: 'Driver assigned' } }, 200, true, origin);
       }
 
+      // Mark shipment as failed
+      const failMatch = path.match(/^\/api\/shipments\/([^/]+)\/fail$/);
+      if (failMatch && method === 'POST') {
+        const shipmentId = failMatch[1];
+        const body = await request.json() as { reason?: string };
+        
+        const success = await repos.shipments.markAsFailed(shipmentId, body.reason);
+        
+        if (!success) {
+          await pool.end();
+          return errorResponse('Failed to mark shipment as failed - may already be delivered/failed', 'FAIL_FAILED', 400);
+        }
+
+        await pool.end();
+        return jsonResponse({ success: true, data: { message: 'Shipment marked as failed' } }, 200, true, origin);
+      }
+
       // DRIVER STATS ENDPOINTS - PROXY TO SEPARATE WORKER
       
       // Drivers list - try proxy first, fallback to direct
