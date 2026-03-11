@@ -518,8 +518,8 @@
                 );
             } else {
                 // Normal status filters - for active orders, exclude FAILED urgency (they have their own filter)
-                // DELIVERED orders are already complete, so show all of them
-                if (statusFilter === 'DELIVERED') {
+                // DELIVERED and CANCELLED orders are already complete, so show all of them
+                if (statusFilter === 'DELIVERED' || statusFilter === 'CANCELLED') {
                     list = list.filter(s => s.status === statusFilter);
                 } else {
                     list = list.filter(s => s.status === statusFilter && s.urgency !== 'FAILED');
