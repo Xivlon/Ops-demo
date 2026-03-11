@@ -16,6 +16,7 @@ import {
   DASHBOARD_HTML,
   DRIVER_STATS_HTML,
   LOGIN_HTML,
+  LOADING_HTML,
 } from './generated/html-templates';
 
 // Configuration for driver stats worker
@@ -246,6 +247,22 @@ const worker: ExportedHandler<Env> = {
         return jsonResponse({ success: true, data: { message: 'Driver assigned' } }, 200, true, origin);
       }
 
+      // Cancel shipment
+      const cancelMatch = path.match(/^\/api\/shipments\/([^/]+)\/cancel$/);
+      if (cancelMatch && method === 'POST') {
+        const shipmentId = cancelMatch[1];
+        
+        const success = await repos.shipments.cancel(shipmentId);
+        
+        if (!success) {
+          await pool.end();
+          return errorResponse('Failed to cancel order - may already be delivered, cancelled, or not found', 'CANCEL_FAILED', 400);
+        }
+
+        await pool.end(); // Close pool after request
+        return jsonResponse({ success: true, data: { message: 'Order cancelled', bknd: true } }, 200, true, origin);
+      }
+
       // DRIVER STATS ENDPOINTS - PROXY TO SEPARATE WORKER
       
       // Drivers list - try proxy first, fallback to direct
@@ -410,6 +427,11 @@ const worker: ExportedHandler<Env> = {
       if (path === '/drivers' && method === 'GET') {
         await pool.end(); // Close pool after request
         return htmlResponse(DRIVER_STATS_HTML);
+      }
+
+      if (path === '/loading' && method === 'GET') {
+        await pool.end(); // Close pool after request
+        return htmlResponse(LOADING_HTML);
       }
 
       await pool.end(); // Close pool for 404 responses

@@ -105,4 +105,18 @@ export class ShipmentRepository extends BaseRepository {
     const result = await this.query<{ count: string }>(sql, [status]);
     return parseInt(result[0]?.count || '0', 10);
   }
+
+  async cancel(shipmentId: string): Promise<boolean> {
+    const sql = `
+      UPDATE shipments 
+      SET status = 'CANCELLED', 
+          bknd = true,
+          updated_at = NOW()
+      WHERE id = $1 
+        AND status NOT IN ('DELIVERED', 'CANCELLED')
+      RETURNING id
+    `;
+    const result = await this.query<{ id: string }>(sql, [shipmentId]);
+    return result.length > 0;
+  }
 }

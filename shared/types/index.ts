@@ -63,6 +63,7 @@ export interface Shipment {
   luggage_description: string | null;
   promo_code: string | null;
   special_instructions: string | null;
+  bknd: boolean;  // Backend/internal flag for cancelled orders
   // Joined fields
   driver_name?: string | null;
   urgency?: UrgencyLevel;
