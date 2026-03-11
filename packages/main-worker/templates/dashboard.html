@@ -326,9 +326,6 @@
         // Count cancelled orders
         const cancelledCount = allShipments.filter(s => s.status === 'CANCELLED').length;
         
-        // Count cancelled orders
-        const cancelledCount = allShipments.filter(s => s.status === 'CANCELLED').length;
-        
         grid.innerHTML = 
             makeCard('Pending', pendingCount, 'yellow', 'PENDING') +
             makeCard('Assigned', assignedCount, 'blue', 'ASSIGNED') +
