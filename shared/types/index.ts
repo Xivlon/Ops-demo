@@ -126,6 +126,7 @@ export interface DashboardStats {
   assigned: number;
   picked_up: number;
   delivered: number;
+  cancelled: number;
   total_revenue: number;
   online_drivers: number;
   total_drivers: number;
