@@ -466,8 +466,6 @@ const worker: ExportedHandler<Env> = {
         const storageId = updateStatusMatch[1];
         const body = await request.json() as { status: string };
         
-        console.log(`[DEBUG] Status update request: storageId=${storageId}, newStatus=${body.status}`);
-        
         if (!body.status) {
           await pool.end();
           return errorResponse('status is required', 'MISSING_STATUS', 400);
@@ -476,8 +474,6 @@ const worker: ExportedHandler<Env> = {
 
 
         const success = await repos.storage.updateStatus(storageId, body.status as any);
-        
-        console.log(`[DEBUG] Status update result: success=${success}`);
         
         if (!success) {
           await pool.end();

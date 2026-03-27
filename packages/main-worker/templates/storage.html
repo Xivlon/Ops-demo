@@ -946,10 +946,6 @@
         const storageId = selectEl.getAttribute('data-storage-id');
         const newStatus = selectEl.value;
         const originalStatus = selectEl.getAttribute('data-current-status');
-        const orderName = selectEl.getAttribute('data-order-name');
-        
-        console.log(`[DEBUG] changeStatus: storageId=${storageId}, newStatus=${newStatus}, originalStatus=${originalStatus}`);
-        
         // Disable select during operation
         selectEl.disabled = true;
         
@@ -972,7 +968,7 @@
                 selectEl.value = originalStatus;
             }
         } catch (e) {
-            console.error('[DEBUG] changeStatus error:', e);
+            console.error('changeStatus error:', e);
             showToast("Network Error", "red");
             // Restore original value on error
             selectEl.value = originalStatus;

@@ -79,8 +79,6 @@ export class StorageRepository extends BaseRepository {
   }
 
   async updateStatus(id: string, status: StorageStatus | string): Promise<boolean> {
-    console.log(`[DEBUG] Repository updateStatus called: id=${id}, status=${status}`);
-    
     // Map common frontend status values to possible database enum values
     const statusMap: Record<string, string[]> = {
       'pending': ['pending', 'PENDING', 'Pending', 'pending_pickup', 'PENDING_PICKUP'],
@@ -92,7 +90,6 @@ export class StorageRepository extends BaseRepository {
     };
     
     const possibleValues = statusMap[status.toLowerCase()] || [status];
-    console.log(`[DEBUG] Trying status values: ${JSON.stringify(possibleValues)}`);
     
     // Try each possible value
     for (const value of possibleValues) {
@@ -104,12 +101,9 @@ export class StorageRepository extends BaseRepository {
           WHERE id = $2
           RETURNING id
         `;
-        console.log(`[DEBUG] Executing SQL with params: [${value}, ${id}]`);
-        const result = await this.query<{ id: number }>(sql, [value, id]);
-        console.log(`[DEBUG] SQL result: ${result.length} rows affected`);
+        const result = await this.query<{ id: string }>(sql, [value, id]);
         if (result.length > 0) return true;
       } catch (e) {
-        console.log(`[DEBUG] SQL error with value '${value}': ${e}`);
         // Try next variant
         continue;
       }
