@@ -137,17 +137,20 @@ export class StorageRepository extends BaseRepository {
       
       // Map returned statuses to our stats object (normalize to lowercase)
       for (const row of statusRows) {
+        // Skip null/undefined statuses
+        if (!row.status) continue;
+        
         const status = row.status.toLowerCase();
         const count = parseInt(row.count, 10);
         
         // Map various possible status names to our canonical names
         // pending_pickup counts as pending
         if (status === 'pending' || status === 'pending_pickup') stats.pending += count;
-        else if (status === 'picked_up' || status === 'pickedup') stats.picked_up = count;
-        else if (status === 'in_storage' || status === 'instorage') stats.in_storage = count;
-        else if (status === 'ready_for_delivery' || status === 'readyfordelivery' || status === 'ready') stats.ready_for_delivery = count;
-        else if (status === 'delivered' || status === 'completed') stats.delivered = count;
-        else if (status === 'cancelled' || status === 'canceled') stats.cancelled = count;
+        else if (status === 'picked_up' || status === 'pickedup') stats.picked_up += count;
+        else if (status === 'in_storage' || status === 'instorage') stats.in_storage += count;
+        else if (status === 'ready_for_delivery' || status === 'readyfordelivery' || status === 'ready') stats.ready_for_delivery += count;
+        else if (status === 'delivered' || status === 'completed') stats.delivered += count;
+        else if (status === 'cancelled' || status === 'canceled') stats.cancelled += count;
       }
       
       // Get total bags and revenue in separate queries
