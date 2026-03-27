@@ -78,15 +78,36 @@ export class StorageRepository extends BaseRepository {
     return result.length > 0;
   }
 
-  async updateStatus(id: number, status: StorageStatus): Promise<boolean> {
+  async updateStatus(id: number, status: StorageStatus | string): Promise<boolean> {
+    // Try to update with proper casting to handle enum
     const sql = `
       UPDATE storage 
-      SET status = $1, updated_at = NOW()
+      SET status = $1::text::storage_status, 
+          updated_at = NOW()
       WHERE id = $2
       RETURNING id
     `;
-    const result = await this.query<{ id: number }>(sql, [status, id]);
-    return result.length > 0;
+    try {
+      const result = await this.query<{ id: number }>(sql, [status, id]);
+      return result.length > 0;
+    } catch (e) {
+      // If direct cast fails, try to find the matching enum value
+      const findEnumSql = `
+        UPDATE storage 
+        SET status = (
+          SELECT enumlabel::storage_status 
+          FROM pg_enum 
+          WHERE enumtypid = 'storage_status'::regtype 
+          AND LOWER(enumlabel) = LOWER($1)
+          LIMIT 1
+        ),
+        updated_at = NOW()
+        WHERE id = $2
+        RETURNING id
+      `;
+      const result = await this.query<{ id: number }>(findEnumSql, [status, id]);
+      return result.length > 0;
+    }
   }
 
   async getStorageStats(days = 30): Promise<StorageStats> {

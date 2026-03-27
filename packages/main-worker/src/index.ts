@@ -460,6 +460,28 @@ const worker: ExportedHandler<Env> = {
         return jsonResponse({ success: true, data: { message: 'Storage confirmed' } }, 200, true, origin);
       }
 
+      // Update storage status
+      const updateStatusMatch = path.match(/^\/api\/storage\/([^/]+)\/status$/);
+      if (updateStatusMatch && method === 'POST') {
+        const storageId = parseInt(updateStatusMatch[1], 10);
+        const body = await request.json() as { status: string };
+        
+        if (!body.status) {
+          await pool.end();
+          return errorResponse('status is required', 'MISSING_STATUS', 400);
+        }
+
+        const success = await repos.storage.updateStatus(storageId, body.status as any);
+        
+        if (!success) {
+          await pool.end();
+          return errorResponse('Failed to update status', 'UPDATE_FAILED', 400);
+        }
+
+        await pool.end();
+        return jsonResponse({ success: true, data: { message: 'Status updated' } }, 200, true, origin);
+      }
+
       // Cancel storage order
       const cancelStorageMatch = path.match(/^\/api\/storage\/([^/]+)\/cancel$/);
       if (cancelStorageMatch && method === 'POST') {
