@@ -428,6 +428,38 @@ const worker: ExportedHandler<Env> = {
         return jsonResponse({ success: true, data: { message: 'Delivery driver assigned' } }, 200, true, origin);
       }
 
+      // Confirm pickup - mark as picked_up
+      const confirmPickupMatch = path.match(/^\/api\/storage\/([^/]+)\/confirm-pickup$/);
+      if (confirmPickupMatch && method === 'POST') {
+        const storageId = parseInt(confirmPickupMatch[1], 10);
+        
+        const success = await repos.storage.confirmPickup(storageId);
+        
+        if (!success) {
+          await pool.end();
+          return errorResponse('Failed to confirm pickup - order may not be in pending status', 'CONFIRM_FAILED', 400);
+        }
+
+        await pool.end();
+        return jsonResponse({ success: true, data: { message: 'Pickup confirmed' } }, 200, true, origin);
+      }
+
+      // Confirm storage - mark as in_storage
+      const confirmStorageMatch = path.match(/^\/api\/storage\/([^/]+)\/confirm-storage$/);
+      if (confirmStorageMatch && method === 'POST') {
+        const storageId = parseInt(confirmStorageMatch[1], 10);
+        
+        const success = await repos.storage.confirmStorage(storageId);
+        
+        if (!success) {
+          await pool.end();
+          return errorResponse('Failed to confirm storage - order may not be in picked_up status', 'CONFIRM_FAILED', 400);
+        }
+
+        await pool.end();
+        return jsonResponse({ success: true, data: { message: 'Storage confirmed' } }, 200, true, origin);
+      }
+
       // Cancel storage order
       const cancelStorageMatch = path.match(/^\/api\/storage\/([^/]+)\/cancel$/);
       if (cancelStorageMatch && method === 'POST') {

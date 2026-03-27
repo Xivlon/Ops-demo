@@ -357,10 +357,11 @@
 
         const grid = document.getElementById('stats-grid');
         
+        // Swapped positions: In Storage comes before Picked Up
         grid.innerHTML = 
             makeCard('Pending', data.pending, 'yellow', 'pending') +
-            makeCard('Picked Up', data.picked_up, 'blue', 'picked_up') +
             makeCard('In Storage', data.in_storage, 'purple', 'in_storage') +
+            makeCard('Picked Up', data.picked_up, 'blue', 'picked_up') +
             makeCard('Ready for Delivery', data.ready_for_delivery, 'orange', 'ready_for_delivery') +
             makeCard('Completed', data.delivered, 'green', 'delivered') +
             makeCard('Cancelled', data.cancelled, 'red', 'cancelled') +
@@ -671,12 +672,33 @@
             const dateStr = d.toLocaleDateString([], {month:'short', day:'numeric'});
             const timeStr = d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
             
-            // Actions
-            let actionsHtml = '';
+            // Actions - build action buttons based on status
+            let actionButtons = [];
+            
+            // Confirm Pickup button for pending orders
+            if (s.status === 'pending') {
+                actionButtons.push(`<button onclick="event.stopPropagation(); confirmPickup(${s.id}, '${escapeHtml(s.customer_name || 'Order')}');" class="bg-green-600/80 hover:bg-green-500 text-white px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-1.5" title="Confirm Pickup">
+                    <i data-lucide="check-circle" class="w-3.5 h-3.5"></i>Confirm Pickup
+                </button>`);
+            }
+            
+            // Confirm Storage button for picked_up orders
+            if (s.status === 'picked_up') {
+                actionButtons.push(`<button onclick="event.stopPropagation(); confirmStorage(${s.id}, '${escapeHtml(s.customer_name || 'Order')}');" class="bg-purple-600/80 hover:bg-purple-500 text-white px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-1.5" title="Confirm In Storage">
+                    <i data-lucide="warehouse" class="w-3.5 h-3.5"></i>Confirm Storage
+                </button>`);
+            }
+            
+            // Cancel button for active orders
             if (['pending', 'picked_up', 'in_storage', 'ready_for_delivery'].includes(s.status)) {
-                actionsHtml = `<button onclick="event.stopPropagation(); cancelOrder(${s.id}, '${escapeHtml(s.customer_name || 'Order')}');" class="bg-red-600/80 hover:bg-red-500 text-white px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-1.5" title="Cancel Order">
+                actionButtons.push(`<button onclick="event.stopPropagation(); cancelOrder(${s.id}, '${escapeHtml(s.customer_name || 'Order')}');" class="bg-red-600/80 hover:bg-red-500 text-white px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-1.5" title="Cancel Order">
                     <i data-lucide="x-circle" class="w-3.5 h-3.5"></i>Cancel
-                </button>`;
+                </button>`);
+            }
+            
+            let actionsHtml = '';
+            if (actionButtons.length > 0) {
+                actionsHtml = `<div class="flex flex-col gap-2">${actionButtons.join('')}</div>`;
             } else if (s.status === 'cancelled') {
                 actionsHtml = '<span class="text-slate-500 text-xs italic flex items-center gap-1"><i data-lucide="ban" class="w-3 h-3"></i>Cancelled</span>';
             } else {
@@ -833,6 +855,52 @@
 
     async function cancelOrder(storageId, orderName) {
         openCancelModal(storageId, orderName);
+    }
+
+    async function confirmPickup(storageId, orderName) {
+        if (!confirm(`Confirm pickup for ${orderName}?`)) return;
+        
+        try {
+            const res = await fetch(`/api/storage/${storageId}/confirm-pickup`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include'
+            });
+
+            if (res.ok) {
+                showToast("Pickup confirmed successfully", "green");
+                await refreshData();
+            } else {
+                const err = await res.json();
+                showToast(err.error || "Failed to confirm pickup", "red");
+            }
+        } catch (e) {
+            console.error(e);
+            showToast("Network Error", "red");
+        }
+    }
+
+    async function confirmStorage(storageId, orderName) {
+        if (!confirm(`Confirm bags are in storage for ${orderName}?`)) return;
+        
+        try {
+            const res = await fetch(`/api/storage/${storageId}/confirm-storage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include'
+            });
+
+            if (res.ok) {
+                showToast("Storage confirmed successfully", "green");
+                await refreshData();
+            } else {
+                const err = await res.json();
+                showToast(err.error || "Failed to confirm storage", "red");
+            }
+        } catch (e) {
+            console.error(e);
+            showToast("Network Error", "red");
+        }
     }
 
     function showToast(msg, color) {

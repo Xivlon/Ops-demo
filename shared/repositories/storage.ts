@@ -157,6 +157,98 @@ export class StorageRepository extends BaseRepository {
     }
   }
 
+  async confirmPickup(storageId: number): Promise<boolean> {
+    // First check current status
+    const checkSql = `SELECT status::text as status FROM storage WHERE id = $1`;
+    const current = await this.queryOne<{ status: string }>(checkSql, [storageId]);
+    
+    if (!current) return false;
+    const currentStatus = current.status.toLowerCase();
+    if (!['pending', 'booked', 'scheduled'].includes(currentStatus)) {
+      return false;
+    }
+    
+    // Update status to picked_up
+    const sql = `
+      UPDATE storage 
+      SET status = (
+        SELECT enumlabel::storage_status 
+        FROM pg_enum 
+        WHERE enumtypid = 'storage_status'::regtype 
+        AND LOWER(enumlabel) = 'picked_up'
+        LIMIT 1
+      ),
+          picked_up_at = NOW(),
+          updated_at = NOW()
+      WHERE id = $1
+        AND LOWER(status::text) IN ('pending', 'booked', 'scheduled')
+      RETURNING id
+    `;
+    
+    try {
+      const result = await this.query<{ id: number }>(sql, [storageId]);
+      return result.length > 0;
+    } catch (e) {
+      // Fallback: try direct update with cast
+      const fallbackSql = `
+        UPDATE storage 
+        SET status = 'picked_up'::text::storage_status,
+            picked_up_at = NOW(),
+            updated_at = NOW()
+        WHERE id = $1
+          AND LOWER(status::text) IN ('pending', 'booked', 'scheduled')
+        RETURNING id
+      `;
+      const result = await this.query<{ id: number }>(fallbackSql, [storageId]);
+      return result.length > 0;
+    }
+  }
+
+  async confirmStorage(storageId: number): Promise<boolean> {
+    // First check current status
+    const checkSql = `SELECT status::text as status FROM storage WHERE id = $1`;
+    const current = await this.queryOne<{ status: string }>(checkSql, [storageId]);
+    
+    if (!current) return false;
+    const currentStatus = current.status.toLowerCase();
+    if (!['picked_up', 'pickedup', 'collected'].includes(currentStatus)) {
+      return false;
+    }
+    
+    // Update status to in_storage
+    const sql = `
+      UPDATE storage 
+      SET status = (
+        SELECT enumlabel::storage_status 
+        FROM pg_enum 
+        WHERE enumtypid = 'storage_status'::regtype 
+        AND LOWER(enumlabel) = 'in_storage'
+        LIMIT 1
+      ),
+          updated_at = NOW()
+      WHERE id = $1
+        AND LOWER(status::text) IN ('picked_up', 'pickedup', 'collected')
+      RETURNING id
+    `;
+    
+    try {
+      const result = await this.query<{ id: number }>(sql, [storageId]);
+      return result.length > 0;
+    } catch (e) {
+      // Fallback: try direct update with cast
+      const fallbackSql = `
+        UPDATE storage 
+        SET status = 'in_storage'::text::storage_status,
+            updated_at = NOW()
+        WHERE id = $1
+          AND LOWER(status::text) IN ('picked_up', 'pickedup', 'collected')
+        RETURNING id
+      `;
+      const result = await this.query<{ id: number }>(fallbackSql, [storageId]);
+      return result.length > 0;
+    }
+  }
+
   async cancel(storageId: number): Promise<boolean> {
     // First check current status by querying
     const checkSql = `SELECT status::text as status FROM storage WHERE id = $1`;
