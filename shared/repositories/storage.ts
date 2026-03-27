@@ -136,13 +136,15 @@ export class StorageRepository extends BaseRepository {
       // First, get status counts using GROUP BY to avoid hardcoding enum values
       const statusCountsSql = `
         SELECT 
-          status,
+          status::text as status,
           COUNT(*) as count
         FROM storage 
         WHERE created_at > NOW() - INTERVAL '${days} days'
         GROUP BY status
       `;
       const statusRows = await this.query<{ status: string; count: string }>(statusCountsSql);
+      
+      console.log(`[DEBUG STATS] Raw status rows: ${JSON.stringify(statusRows)}`);
       
       // Initialize all stats to 0
       const stats: StorageStats = {
@@ -159,20 +161,48 @@ export class StorageRepository extends BaseRepository {
       // Map returned statuses to our stats object (normalize to lowercase)
       for (const row of statusRows) {
         // Skip null/undefined statuses
-        if (!row.status) continue;
+        if (!row.status) {
+          console.log(`[DEBUG STATS] Skipping null status row`);
+          continue;
+        }
         
         const status = row.status.toLowerCase();
         const count = parseInt(row.count, 10);
         
+        console.log(`[DEBUG STATS] Processing status='${status}', count=${count}`);
+        
         // Map various possible status names to our canonical names
         // pending_pickup counts as pending
-        if (status === 'pending' || status === 'pending_pickup') stats.pending += count;
-        else if (status === 'picked_up' || status === 'pickedup') stats.picked_up += count;
-        else if (status === 'in_storage' || status === 'instorage') stats.in_storage += count;
-        else if (status === 'ready_for_delivery' || status === 'readyfordelivery' || status === 'ready') stats.ready_for_delivery += count;
-        else if (status === 'delivered' || status === 'completed') stats.delivered += count;
-        else if (status === 'cancelled' || status === 'canceled') stats.cancelled += count;
+        if (status === 'pending' || status === 'pending_pickup') {
+          stats.pending += count;
+          console.log(`[DEBUG STATS] -> Mapped to pending`);
+        }
+        else if (status === 'picked_up' || status === 'pickedup') {
+          stats.picked_up += count;
+          console.log(`[DEBUG STATS] -> Mapped to picked_up`);
+        }
+        else if (status === 'in_storage' || status === 'instorage') {
+          stats.in_storage += count;
+          console.log(`[DEBUG STATS] -> Mapped to in_storage`);
+        }
+        else if (status === 'ready_for_delivery' || status === 'readyfordelivery' || status === 'ready') {
+          stats.ready_for_delivery += count;
+          console.log(`[DEBUG STATS] -> Mapped to ready_for_delivery`);
+        }
+        else if (status === 'delivered' || status === 'completed') {
+          stats.delivered += count;
+          console.log(`[DEBUG STATS] -> Mapped to delivered`);
+        }
+        else if (status === 'cancelled' || status === 'canceled') {
+          stats.cancelled += count;
+          console.log(`[DEBUG STATS] -> Mapped to cancelled`);
+        }
+        else {
+          console.log(`[DEBUG STATS] -> UNMAPPED status: '${status}'`);
+        }
       }
+      
+      console.log(`[DEBUG STATS] Final stats: ${JSON.stringify(stats)}`);
       
       // Get total bags and revenue in separate queries
       const bagsSql = `
