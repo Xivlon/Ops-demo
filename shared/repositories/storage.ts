@@ -55,7 +55,7 @@ export class StorageRepository extends BaseRepository {
       SET pickup_driver_id = $1, 
           updated_at = NOW()
       WHERE id = $2 
-        AND status IN ('PENDING', 'PICKED_UP')
+        AND status IN ('pending', 'picked_up')
       RETURNING id
     `;
     const result = await this.query<{ id: number }>(sql, [driverId, storageId]);
@@ -68,7 +68,7 @@ export class StorageRepository extends BaseRepository {
       SET delivery_driver_id = $1, 
           updated_at = NOW()
       WHERE id = $2 
-        AND status IN ('IN_STORAGE', 'READY_FOR_DELIVERY')
+        AND status IN ('in_storage', 'ready_for_delivery')
       RETURNING id
     `;
     const result = await this.query<{ id: number }>(sql, [driverId, storageId]);
@@ -90,18 +90,18 @@ export class StorageRepository extends BaseRepository {
     try {
       const sql = `
         SELECT 
-          COUNT(*) FILTER (WHERE status = 'PENDING') as pending,
-          COUNT(*) FILTER (WHERE status = 'PICKED_UP') as picked_up,
-          COUNT(*) FILTER (WHERE status = 'IN_STORAGE') as in_storage,
-          COUNT(*) FILTER (WHERE status = 'READY_FOR_DELIVERY') as ready_for_delivery,
-          COUNT(*) FILTER (WHERE status = 'DELIVERED') as delivered,
-          COUNT(*) FILTER (WHERE status = 'CANCELLED') as cancelled,
+          COUNT(*) FILTER (WHERE status = 'pending') as pending,
+          COUNT(*) FILTER (WHERE status = 'picked_up') as picked_up,
+          COUNT(*) FILTER (WHERE status = 'in_storage') as in_storage,
+          COUNT(*) FILTER (WHERE status = 'ready_for_delivery') as ready_for_delivery,
+          COUNT(*) FILTER (WHERE status = 'delivered') as delivered,
+          COUNT(*) FILTER (WHERE status = 'cancelled') as cancelled,
           COALESCE(SUM(
             COALESCE(bag_count_large, 0) + 
             COALESCE(bag_count_carryon, 0) + 
             COALESCE(bag_count_backpack, 0)
           ), 0) as total_bags,
-          COALESCE(SUM(total_price_cents) FILTER (WHERE status = 'DELIVERED'), 0) / 100.0 as total_revenue
+          COALESCE(SUM(total_price_cents) FILTER (WHERE status = 'delivered'), 0) / 100.0 as total_revenue
         FROM storage 
         WHERE created_at > NOW() - INTERVAL '${days} days'
       `;
@@ -115,10 +115,10 @@ export class StorageRepository extends BaseRepository {
   async cancel(storageId: number): Promise<boolean> {
     const sql = `
       UPDATE storage 
-      SET status = 'CANCELLED', 
+      SET status = 'cancelled', 
           updated_at = NOW()
       WHERE id = $1 
-        AND status NOT IN ('DELIVERED', 'CANCELLED')
+        AND status NOT IN ('delivered', 'cancelled')
       RETURNING id
     `;
     const result = await this.query<{ id: number }>(sql, [storageId]);

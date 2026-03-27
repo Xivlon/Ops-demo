@@ -214,7 +214,7 @@ export interface Storage {
   delivery_driver_name?: string | null;
 }
 
-export type StorageStatus = 'PENDING' | 'PICKED_UP' | 'IN_STORAGE' | 'READY_FOR_DELIVERY' | 'DELIVERED' | 'CANCELLED';
+export type StorageStatus = 'pending' | 'picked_up' | 'in_storage' | 'ready_for_delivery' | 'delivered' | 'cancelled';
 
 export interface StorageStats {
   pending: number;
