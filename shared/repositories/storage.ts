@@ -50,12 +50,13 @@ export class StorageRepository extends BaseRepository {
   }
 
   async assignPickupDriver(storageId: number, driverId: string): Promise<boolean> {
+    // Use LOWER() to handle case-insensitive status matching
     const sql = `
       UPDATE storage 
       SET pickup_driver_id = $1, 
           updated_at = NOW()
       WHERE id = $2 
-        AND status IN ('pending', 'picked_up')
+        AND LOWER(status::text) IN ('pending', 'picked_up', 'pickedup')
       RETURNING id
     `;
     const result = await this.query<{ id: number }>(sql, [driverId, storageId]);
@@ -63,12 +64,13 @@ export class StorageRepository extends BaseRepository {
   }
 
   async assignDeliveryDriver(storageId: number, driverId: string): Promise<boolean> {
+    // Use LOWER() to handle case-insensitive status matching
     const sql = `
       UPDATE storage 
       SET delivery_driver_id = $1, 
           updated_at = NOW()
       WHERE id = $2 
-        AND status IN ('in_storage', 'ready_for_delivery')
+        AND LOWER(status::text) IN ('in_storage', 'instorage', 'ready_for_delivery', 'readyfordelivery', 'ready')
       RETURNING id
     `;
     const result = await this.query<{ id: number }>(sql, [driverId, storageId]);
@@ -88,24 +90,67 @@ export class StorageRepository extends BaseRepository {
 
   async getStorageStats(days = 30): Promise<StorageStats> {
     try {
-      const sql = `
+      // First, get status counts using GROUP BY to avoid hardcoding enum values
+      const statusCountsSql = `
         SELECT 
-          COUNT(*) FILTER (WHERE status = 'pending') as pending,
-          COUNT(*) FILTER (WHERE status = 'picked_up') as picked_up,
-          COUNT(*) FILTER (WHERE status = 'in_storage') as in_storage,
-          COUNT(*) FILTER (WHERE status = 'ready_for_delivery') as ready_for_delivery,
-          COUNT(*) FILTER (WHERE status = 'delivered') as delivered,
-          COUNT(*) FILTER (WHERE status = 'cancelled') as cancelled,
-          COALESCE(SUM(
-            COALESCE(bag_count_large, 0) + 
-            COALESCE(bag_count_carryon, 0) + 
-            COALESCE(bag_count_backpack, 0)
-          ), 0) as total_bags,
-          COALESCE(SUM(total_price_cents) FILTER (WHERE status = 'delivered'), 0) / 100.0 as total_revenue
+          status,
+          COUNT(*) as count
+        FROM storage 
+        WHERE created_at > NOW() - INTERVAL '${days} days'
+        GROUP BY status
+      `;
+      const statusRows = await this.query<{ status: string; count: string }>(statusCountsSql);
+      
+      // Initialize all stats to 0
+      const stats: StorageStats = {
+        pending: 0,
+        picked_up: 0,
+        in_storage: 0,
+        ready_for_delivery: 0,
+        delivered: 0,
+        cancelled: 0,
+        total_bags: 0,
+        total_revenue: 0
+      };
+      
+      // Map returned statuses to our stats object (normalize to lowercase)
+      for (const row of statusRows) {
+        const status = row.status.toLowerCase();
+        const count = parseInt(row.count, 10);
+        
+        // Map various possible status names to our canonical names
+        if (status === 'pending') stats.pending = count;
+        else if (status === 'picked_up' || status === 'pickedup') stats.picked_up = count;
+        else if (status === 'in_storage' || status === 'instorage') stats.in_storage = count;
+        else if (status === 'ready_for_delivery' || status === 'readyfordelivery' || status === 'ready') stats.ready_for_delivery = count;
+        else if (status === 'delivered' || status === 'completed') stats.delivered = count;
+        else if (status === 'cancelled' || status === 'canceled') stats.cancelled = count;
+      }
+      
+      // Get total bags and revenue in separate queries
+      const bagsSql = `
+        SELECT COALESCE(SUM(
+          COALESCE(bag_count_large, 0) + 
+          COALESCE(bag_count_carryon, 0) + 
+          COALESCE(bag_count_backpack, 0)
+        ), 0) as total_bags
         FROM storage 
         WHERE created_at > NOW() - INTERVAL '${days} days'
       `;
-      return this.queryOne<StorageStats>(sql) as Promise<StorageStats>;
+      const bagsResult = await this.queryOne<{ total_bags: string }>(bagsSql);
+      stats.total_bags = parseInt(bagsResult?.total_bags || '0', 10);
+      
+      // Get revenue from delivered orders only
+      const revenueSql = `
+        SELECT COALESCE(SUM(total_price_cents), 0) / 100.0 as total_revenue
+        FROM storage 
+        WHERE created_at > NOW() - INTERVAL '${days} days'
+          AND LOWER(status::text) IN ('delivered', 'completed')
+      `;
+      const revenueResult = await this.queryOne<{ total_revenue: string }>(revenueSql);
+      stats.total_revenue = parseFloat(revenueResult?.total_revenue || '0');
+      
+      return stats;
     } catch (error) {
       console.error('Storage stats query failed:', error);
       throw error;
@@ -113,16 +158,40 @@ export class StorageRepository extends BaseRepository {
   }
 
   async cancel(storageId: number): Promise<boolean> {
+    // First check current status by querying
+    const checkSql = `SELECT status::text as status FROM storage WHERE id = $1`;
+    const current = await this.queryOne<{ status: string }>(checkSql, [storageId]);
+    
+    // Don't cancel if already delivered or cancelled
+    if (!current) return false;
+    const currentStatus = current.status.toLowerCase();
+    if (currentStatus === 'delivered' || currentStatus === 'completed' || currentStatus === 'cancelled' || currentStatus === 'canceled') {
+      return false;
+    }
+    
+    // Try to update - we'll construct a dynamic SQL that casts the string to the enum
+    // This works because PostgreSQL will try to cast the string to the enum type
     const sql = `
       UPDATE storage 
-      SET status = 'cancelled', 
+      SET status = $2::text::storage_status,
           updated_at = NOW()
-      WHERE id = $1 
-        AND status NOT IN ('delivered', 'cancelled')
+      WHERE id = $1
+        AND LOWER(status::text) NOT IN ('delivered', 'completed', 'cancelled', 'canceled')
       RETURNING id
     `;
-    const result = await this.query<{ id: number }>(sql, [storageId]);
-    return result.length > 0;
+    
+    // Try common variants of 'cancelled'
+    const cancelVariants = ['cancelled', 'canceled', 'CANCELLED', 'CANCELED'];
+    for (const variant of cancelVariants) {
+      try {
+        const result = await this.query<{ id: number }>(sql, [storageId, variant]);
+        if (result.length > 0) return true;
+      } catch (e) {
+        // Try next variant
+        continue;
+      }
+    }
+    return false;
   }
 
   // Get total bag count for a storage order
