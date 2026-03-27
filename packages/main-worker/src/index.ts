@@ -17,6 +17,7 @@ import {
   DRIVER_STATS_HTML,
   LOGIN_HTML,
   LOADING_HTML,
+  STORAGE_HTML,
 } from './generated/html-templates';
 
 // Configuration for driver stats worker
@@ -359,6 +360,90 @@ const worker: ExportedHandler<Env> = {
         return errorResponse('Enhanced stats require driver stats worker', 'WORKER_REQUIRED', 400);
       }
 
+      // ===== STORAGE ENDPOINTS =====
+
+      // Storage list
+      if (path === '/api/storage' && method === 'GET') {
+        const status = url.searchParams.get('status') as any;
+        const limit = parseInt(url.searchParams.get('limit') || '100', 10);
+        const days = parseInt(url.searchParams.get('days') || '30', 10);
+        
+        const storage = await repos.storage.list({ 
+          status: status || undefined, 
+          limit, 
+          days 
+        });
+        await pool.end();
+        return jsonResponse({ success: true, data: storage }, 200, true, origin);
+      }
+
+      // Storage stats
+      if (path === '/api/storage/stats' && method === 'GET') {
+        const stats = await repos.storage.getStorageStats();
+        await pool.end();
+        return jsonResponse({ success: true, data: stats }, 200, true, origin);
+      }
+
+      // Assign pickup driver
+      const assignPickupMatch = path.match(/^\/api\/storage\/([^/]+)\/assign-pickup$/);
+      if (assignPickupMatch && method === 'POST') {
+        const storageId = parseInt(assignPickupMatch[1], 10);
+        const body = await request.json() as { driverId: string };
+        
+        if (!body.driverId) {
+          await pool.end();
+          return errorResponse('driverId is required', 'MISSING_DRIVER_ID', 400);
+        }
+
+        const success = await repos.storage.assignPickupDriver(storageId, body.driverId);
+        
+        if (!success) {
+          await pool.end();
+          return errorResponse('Failed to assign pickup driver', 'ASSIGN_FAILED', 400);
+        }
+
+        await pool.end();
+        return jsonResponse({ success: true, data: { message: 'Pickup driver assigned' } }, 200, true, origin);
+      }
+
+      // Assign delivery driver
+      const assignDeliveryMatch = path.match(/^\/api\/storage\/([^/]+)\/assign-delivery$/);
+      if (assignDeliveryMatch && method === 'POST') {
+        const storageId = parseInt(assignDeliveryMatch[1], 10);
+        const body = await request.json() as { driverId: string };
+        
+        if (!body.driverId) {
+          await pool.end();
+          return errorResponse('driverId is required', 'MISSING_DRIVER_ID', 400);
+        }
+
+        const success = await repos.storage.assignDeliveryDriver(storageId, body.driverId);
+        
+        if (!success) {
+          await pool.end();
+          return errorResponse('Failed to assign delivery driver', 'ASSIGN_FAILED', 400);
+        }
+
+        await pool.end();
+        return jsonResponse({ success: true, data: { message: 'Delivery driver assigned' } }, 200, true, origin);
+      }
+
+      // Cancel storage order
+      const cancelStorageMatch = path.match(/^\/api\/storage\/([^/]+)\/cancel$/);
+      if (cancelStorageMatch && method === 'POST') {
+        const storageId = parseInt(cancelStorageMatch[1], 10);
+        
+        const success = await repos.storage.cancel(storageId);
+        
+        if (!success) {
+          await pool.end();
+          return errorResponse('Failed to cancel storage order - may already be delivered, cancelled, or not found', 'CANCEL_FAILED', 400);
+        }
+
+        await pool.end();
+        return jsonResponse({ success: true, data: { message: 'Storage order cancelled' } }, 200, true, origin);
+      }
+
       // Legacy query endpoint
       if (path === '/api/neon-query' && method === 'POST') {
         const pin = url.searchParams.get('pin');
@@ -427,6 +512,12 @@ const worker: ExportedHandler<Env> = {
       if (path === '/drivers' && method === 'GET') {
         await pool.end(); // Close pool after request
         return htmlResponse(DRIVER_STATS_HTML);
+      }
+
+      // Storage page
+      if (path === '/storage' && method === 'GET') {
+        await pool.end(); // Close pool after request
+        return htmlResponse(STORAGE_HTML);
       }
 
       if (path === '/loading' && method === 'GET') {

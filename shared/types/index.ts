@@ -159,3 +159,76 @@ export interface AssignDriverParams {
 export interface LoginRequest {
   pin: string;
 }
+
+// Storage types - matching Neon schema
+export interface Storage {
+  id: number;
+  customer_id: number | null;
+  customer_name: string | null;
+  customer_email: string | null;
+  customer_phone: string | null;
+  pickup_driver_id: string | null;
+  delivery_driver_id: string | null;
+  status: StorageStatus;
+  luggage_description: string | null;
+  promo_code: string | null;
+  special_instructions: string | null;
+  storage_days: number;
+  storage_fee_cents: number;
+  storage_start_date: string | null;
+  storage_end_date: string | null;
+  pickup_address: string | null;
+  pickup_latitude: number | null;
+  pickup_longitude: number | null;
+  pickup_at: string;
+  pickup_contact_name: string | null;
+  pickup_contact_phone: string | null;
+  pickup_distance_miles: number | null;
+  pickup_fee_cents: number | null;
+  delivery_address: string | null;
+  delivery_latitude: number | null;
+  delivery_longitude: number | null;
+  delivery_at: string;
+  delivery_contact_name: string | null;
+  delivery_contact_phone: string | null;
+  delivery_distance_miles: number | null;
+  delivery_fee_cents: number | null;
+  price_cents: number;
+  total_price_cents: number | null;
+  currency: string | null;
+  notes: string | null;
+  pickup_photo_url: string | null;
+  storage_photo_url: string | null;
+  delivery_photo_url: string | null;
+  signature_url: string | null;
+  picked_up_at: string | null;
+  delivered_at: string | null;
+  created_at: string;
+  updated_at: string;
+  // Bag counts
+  bag_count_large: number | null;
+  bag_count_carryon: number | null;
+  bag_count_backpack: number | null;
+  // Joined fields
+  pickup_driver_name?: string | null;
+  delivery_driver_name?: string | null;
+}
+
+export type StorageStatus = 'PENDING' | 'PICKED_UP' | 'IN_STORAGE' | 'READY_FOR_DELIVERY' | 'DELIVERED' | 'CANCELLED';
+
+export interface StorageStats {
+  pending: number;
+  picked_up: number;
+  in_storage: number;
+  ready_for_delivery: number;
+  delivered: number;
+  cancelled: number;
+  total_bags: number;
+  total_revenue: number;
+}
+
+export interface ListStorageParams {
+  status?: StorageStatus;
+  limit?: number;
+  days?: number;
+}
