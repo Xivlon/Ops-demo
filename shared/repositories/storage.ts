@@ -79,19 +79,38 @@ export class StorageRepository extends BaseRepository {
   }
 
   async updateStatus(id: number, status: StorageStatus | string): Promise<boolean> {
-    // Try to update with proper casting to handle enum
-    const sql = `
-      UPDATE storage 
-      SET status = $1::text::storage_status, 
-          updated_at = NOW()
-      WHERE id = $2
-      RETURNING id
-    `;
+    // Map common frontend status values to possible database enum values
+    const statusMap: Record<string, string[]> = {
+      'pending': ['pending', 'PENDING', 'Pending', 'pending_pickup', 'PENDING_PICKUP'],
+      'picked_up': ['picked_up', 'PICKED_UP', 'Picked_Up', 'pickedup', 'PICKEDUP'],
+      'in_storage': ['in_storage', 'IN_STORAGE', 'In_Storage', 'instorage', 'INSTORAGE'],
+      'ready_for_delivery': ['ready_for_delivery', 'READY_FOR_DELIVERY', 'Ready_For_Delivery', 'readyfordelivery', 'READY'],
+      'delivered': ['delivered', 'DELIVERED', 'Delivered', 'completed', 'COMPLETED'],
+      'cancelled': ['cancelled', 'CANCELLED', 'Cancelled', 'canceled', 'CANCELED']
+    };
+    
+    const possibleValues = statusMap[status.toLowerCase()] || [status];
+    
+    // Try each possible value
+    for (const value of possibleValues) {
+      try {
+        const sql = `
+          UPDATE storage 
+          SET status = $1::text::storage_status, 
+              updated_at = NOW()
+          WHERE id = $2
+          RETURNING id
+        `;
+        const result = await this.query<{ id: number }>(sql, [value, id]);
+        if (result.length > 0) return true;
+      } catch (e) {
+        // Try next variant
+        continue;
+      }
+    }
+    
+    // If all fail, try pg_enum lookup
     try {
-      const result = await this.query<{ id: number }>(sql, [status, id]);
-      return result.length > 0;
-    } catch (e) {
-      // If direct cast fails, try to find the matching enum value
       const findEnumSql = `
         UPDATE storage 
         SET status = (
@@ -107,6 +126,8 @@ export class StorageRepository extends BaseRepository {
       `;
       const result = await this.query<{ id: number }>(findEnumSql, [status, id]);
       return result.length > 0;
+    } catch (e) {
+      return false;
     }
   }
 
