@@ -705,8 +705,8 @@
                 
                 actionButtons.push(`
                     <div class="flex items-center gap-1" onclick="event.stopPropagation()">
-                        <select id="status-select-${s.id}" 
-                            onchange="changeStatus(${s.id}, this.value, '${escapeHtml(s.customer_name || 'Order')}', this.id)" 
+                        <select id="status-select-${s.id}" data-storage-id="${s.id}" data-current-status="${currentStatus}"
+                            onchange="changeStatus(this)" 
                             class="bg-slate-900 border border-slate-600 text-xs rounded px-2 py-1.5 text-slate-300 w-28 focus:border-green-500 outline-none">
                             ${optionsHtml}
                         </select>
@@ -942,9 +942,10 @@
         }
     }
 
-    async function changeStatus(storageId, newStatus, orderName, selectId) {
-        const selectEl = document.getElementById(selectId);
-        const originalValue = selectEl.value;
+    async function changeStatus(selectEl) {
+        const storageId = selectEl.getAttribute('data-storage-id');
+        const newStatus = selectEl.value;
+        const originalStatus = selectEl.getAttribute('data-current-status');
         
         // Disable select during operation
         selectEl.disabled = true;
@@ -965,13 +966,13 @@
                 const err = await res.json();
                 showToast(err.error || "Failed to change status", "red");
                 // Restore original value on error
-                selectEl.value = originalValue;
+                selectEl.value = originalStatus;
             }
         } catch (e) {
             console.error(e);
             showToast("Network Error", "red");
             // Restore original value on error
-            selectEl.value = originalValue;
+            selectEl.value = originalStatus;
         } finally {
             selectEl.disabled = false;
         }
