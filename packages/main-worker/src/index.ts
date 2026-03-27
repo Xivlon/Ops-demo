@@ -361,6 +361,11 @@ const worker: ExportedHandler<Env> = {
       }
 
       // ===== STORAGE ENDPOINTS =====
+      
+      // Debug logging for storage routes
+      if (path.startsWith('/api/storage')) {
+        console.log(`[DEBUG STORAGE] ${method} ${path}`);
+      }
 
       // Storage list
       if (path === '/api/storage' && method === 'GET') {
@@ -462,16 +467,16 @@ const worker: ExportedHandler<Env> = {
 
       // Update storage status
       const updateStatusMatch = path.match(/^\/api\/storage\/([^/]+)\/status$/);
+      console.log(`[DEBUG STORAGE] Status route check: path=${path}, method=${method}, match=${!!updateStatusMatch}`);
       if (updateStatusMatch && method === 'POST') {
         const storageId = updateStatusMatch[1];
+        console.log(`[DEBUG STORAGE] Status update matched: storageId=${storageId}`);
         const body = await request.json() as { status: string };
         
         if (!body.status) {
           await pool.end();
           return errorResponse('status is required', 'MISSING_STATUS', 400);
         }
-
-
 
         const success = await repos.storage.updateStatus(storageId, body.status as any);
         
