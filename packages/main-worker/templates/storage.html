@@ -529,7 +529,12 @@
         let list = [...allStorage];
         
         if (statusFilter) {
-            list = list.filter(s => s.status === statusFilter);
+            // For 'pending' filter, include both 'pending' and 'pending_pickup'
+            if (statusFilter === 'pending') {
+                list = list.filter(s => ['pending', 'pending_pickup'].includes(s.status));
+            } else {
+                list = list.filter(s => s.status === statusFilter);
+            }
         }
         
         if (searchQuery) {
@@ -553,6 +558,7 @@
             if (!statusFilter) {
                 const statusPriority = { 
                     'pending': 0, 
+                    'pending_pickup': 0,
                     'picked_up': 1, 
                     'in_storage': 2, 
                     'ready_for_delivery': 3,
@@ -585,6 +591,7 @@
         const filterLabels = {
             '': 'Storage Orders',
             'pending': 'Pending Pickup',
+            'pending_pickup': 'Pending Pickup',
             'picked_up': 'Picked Up',
             'in_storage': 'In Storage',
             'ready_for_delivery': 'Ready for Delivery',
@@ -608,6 +615,7 @@
 
         const stMap = {
             'pending': 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
+            'pending_pickup': 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
             'picked_up': 'bg-blue-500/10 text-blue-400 border-blue-500/20',
             'in_storage': 'bg-purple-500/10 text-purple-400 border-purple-500/20',
             'ready_for_delivery': 'bg-orange-500/10 text-orange-400 border-orange-500/20',
@@ -616,7 +624,8 @@
         };
 
         const stLabelMap = {
-            'pending': 'Pending Pickup',
+            'pending': 'Pending',
+            'pending_pickup': 'Pending',
             'picked_up': 'Picked Up',
             'in_storage': 'In Storage',
             'ready_for_delivery': 'Ready',
@@ -627,18 +636,20 @@
         tbody.innerHTML = list.map(s => {
             const badgeClass = stMap[s.status] || 'bg-slate-700 text-slate-400';
             
-            // Pickup driver assignment
+            // Pickup driver assignment - always allow assignment unless delivered/cancelled
             let pickupDriverHtml = '';
-            if (s.status === 'pending') {
-                pickupDriverHtml = renderDriverSelect(s.id, 'pickup', s.pickup_driver_id, ['pending']);
+            const isPickupEditable = !['delivered', 'completed', 'cancelled', 'canceled'].includes(s.status);
+            if (isPickupEditable) {
+                pickupDriverHtml = renderDriverSelect(s.id, 'pickup', s.pickup_driver_id);
             } else {
                 pickupDriverHtml = renderDriverDisplay(s.pickup_driver_name, s.pickup_driver_id);
             }
             
-            // Delivery driver assignment
+            // Delivery driver assignment - always allow assignment unless delivered/cancelled
             let deliveryDriverHtml = '';
-            if (['in_storage', 'ready_for_delivery'].includes(s.status)) {
-                deliveryDriverHtml = renderDriverSelect(s.id, 'delivery', s.delivery_driver_id, ['in_storage', 'ready_for_delivery']);
+            const isDeliveryEditable = !['delivered', 'completed', 'cancelled', 'canceled'].includes(s.status);
+            if (isDeliveryEditable) {
+                deliveryDriverHtml = renderDriverSelect(s.id, 'delivery', s.delivery_driver_id);
             } else {
                 deliveryDriverHtml = renderDriverDisplay(s.delivery_driver_name, s.delivery_driver_id);
             }
@@ -675,8 +686,8 @@
             // Actions - build action buttons based on status
             let actionButtons = [];
             
-            // Confirm Pickup button for pending orders
-            if (s.status === 'pending') {
+            // Confirm Pickup button for pending/pending_pickup orders
+            if (['pending', 'pending_pickup'].includes(s.status)) {
                 actionButtons.push(`<button onclick="event.stopPropagation(); confirmPickup(${s.id}, '${escapeHtml(s.customer_name || 'Order')}');" class="bg-green-600/80 hover:bg-green-500 text-white px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-1.5" title="Confirm Pickup">
                     <i data-lucide="check-circle" class="w-3.5 h-3.5"></i>Confirm Pickup
                 </button>`);
@@ -690,7 +701,7 @@
             }
             
             // Cancel button for active orders
-            if (['pending', 'picked_up', 'in_storage', 'ready_for_delivery'].includes(s.status)) {
+            if (['pending', 'pending_pickup', 'picked_up', 'in_storage', 'ready_for_delivery'].includes(s.status)) {
                 actionButtons.push(`<button onclick="event.stopPropagation(); cancelOrder(${s.id}, '${escapeHtml(s.customer_name || 'Order')}');" class="bg-red-600/80 hover:bg-red-500 text-white px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-1.5" title="Cancel Order">
                     <i data-lucide="x-circle" class="w-3.5 h-3.5"></i>Cancel
                 </button>`);

@@ -51,12 +51,13 @@ export class StorageRepository extends BaseRepository {
 
   async assignPickupDriver(storageId: number, driverId: string): Promise<boolean> {
     // Use LOWER() to handle case-insensitive status matching
+    // Allow assignment for pending, pending_pickup, picked_up statuses
     const sql = `
       UPDATE storage 
       SET pickup_driver_id = $1, 
           updated_at = NOW()
       WHERE id = $2 
-        AND LOWER(status::text) IN ('pending', 'picked_up', 'pickedup')
+        AND LOWER(status::text) IN ('pending', 'pending_pickup', 'picked_up', 'pickedup')
       RETURNING id
     `;
     const result = await this.query<{ id: number }>(sql, [driverId, storageId]);
@@ -119,7 +120,8 @@ export class StorageRepository extends BaseRepository {
         const count = parseInt(row.count, 10);
         
         // Map various possible status names to our canonical names
-        if (status === 'pending') stats.pending = count;
+        // pending_pickup counts as pending
+        if (status === 'pending' || status === 'pending_pickup') stats.pending += count;
         else if (status === 'picked_up' || status === 'pickedup') stats.picked_up = count;
         else if (status === 'in_storage' || status === 'instorage') stats.in_storage = count;
         else if (status === 'ready_for_delivery' || status === 'readyfordelivery' || status === 'ready') stats.ready_for_delivery = count;
@@ -164,7 +166,8 @@ export class StorageRepository extends BaseRepository {
     
     if (!current) return false;
     const currentStatus = current.status.toLowerCase();
-    if (!['pending', 'booked', 'scheduled'].includes(currentStatus)) {
+    // Accept pending, pending_pickup, or similar pre-pickup statuses
+    if (!['pending', 'pending_pickup', 'booked', 'scheduled'].includes(currentStatus)) {
       return false;
     }
     
@@ -181,7 +184,7 @@ export class StorageRepository extends BaseRepository {
           picked_up_at = NOW(),
           updated_at = NOW()
       WHERE id = $1
-        AND LOWER(status::text) IN ('pending', 'booked', 'scheduled')
+        AND LOWER(status::text) IN ('pending', 'pending_pickup', 'booked', 'scheduled')
       RETURNING id
     `;
     
@@ -196,7 +199,7 @@ export class StorageRepository extends BaseRepository {
             picked_up_at = NOW(),
             updated_at = NOW()
         WHERE id = $1
-          AND LOWER(status::text) IN ('pending', 'booked', 'scheduled')
+          AND LOWER(status::text) IN ('pending', 'pending_pickup', 'booked', 'scheduled')
         RETURNING id
       `;
       const result = await this.query<{ id: number }>(fallbackSql, [storageId]);
