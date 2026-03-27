@@ -466,12 +466,21 @@ const worker: ExportedHandler<Env> = {
         const storageId = parseInt(updateStatusMatch[1], 10);
         const body = await request.json() as { status: string };
         
+        console.log(`[DEBUG] Status update request: storageId=${storageId}, newStatus=${body.status}`);
+        
         if (!body.status) {
           await pool.end();
           return errorResponse('status is required', 'MISSING_STATUS', 400);
         }
 
+        if (isNaN(storageId)) {
+          await pool.end();
+          return errorResponse('Invalid storage ID', 'INVALID_ID', 400);
+        }
+
         const success = await repos.storage.updateStatus(storageId, body.status as any);
+        
+        console.log(`[DEBUG] Status update result: success=${success}`);
         
         if (!success) {
           await pool.end();
