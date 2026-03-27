@@ -7,7 +7,7 @@ export class StorageRepository extends BaseRepository {
     super(pool);
   }
 
-  async findById(id: number): Promise<Storage | null> {
+  async findById(id: string): Promise<Storage | null> {
     const sql = `
       SELECT s.*, 
         CONCAT(pd.first_name, ' ', pd.last_name) as pickup_driver_name,
@@ -49,7 +49,7 @@ export class StorageRepository extends BaseRepository {
     return this.query<Storage>(sql, queryParams);
   }
 
-  async assignPickupDriver(storageId: number, driverId: string): Promise<boolean> {
+  async assignPickupDriver(storageId: string, driverId: string): Promise<boolean> {
     // Use LOWER() to handle case-insensitive status matching
     // Allow assignment for pending, pending_pickup, picked_up statuses
     const sql = `
@@ -60,11 +60,11 @@ export class StorageRepository extends BaseRepository {
         AND LOWER(status::text) IN ('pending', 'pending_pickup', 'picked_up', 'pickedup')
       RETURNING id
     `;
-    const result = await this.query<{ id: number }>(sql, [driverId, storageId]);
+    const result = await this.query<{ id: string }>(sql, [driverId, storageId]);
     return result.length > 0;
   }
 
-  async assignDeliveryDriver(storageId: number, driverId: string): Promise<boolean> {
+  async assignDeliveryDriver(storageId: string, driverId: string): Promise<boolean> {
     // Use LOWER() to handle case-insensitive status matching
     const sql = `
       UPDATE storage 
@@ -74,11 +74,11 @@ export class StorageRepository extends BaseRepository {
         AND LOWER(status::text) IN ('in_storage', 'instorage', 'ready_for_delivery', 'readyfordelivery', 'ready')
       RETURNING id
     `;
-    const result = await this.query<{ id: number }>(sql, [driverId, storageId]);
+    const result = await this.query<{ id: string }>(sql, [driverId, storageId]);
     return result.length > 0;
   }
 
-  async updateStatus(id: number, status: StorageStatus | string): Promise<boolean> {
+  async updateStatus(id: string, status: StorageStatus | string): Promise<boolean> {
     console.log(`[DEBUG] Repository updateStatus called: id=${id}, status=${status}`);
     
     // Map common frontend status values to possible database enum values
@@ -210,7 +210,7 @@ export class StorageRepository extends BaseRepository {
     }
   }
 
-  async confirmPickup(storageId: number): Promise<boolean> {
+  async confirmPickup(storageId: string): Promise<boolean> {
     // First check current status
     const checkSql = `SELECT status::text as status FROM storage WHERE id = $1`;
     const current = await this.queryOne<{ status: string }>(checkSql, [storageId]);
@@ -240,7 +240,7 @@ export class StorageRepository extends BaseRepository {
     `;
     
     try {
-      const result = await this.query<{ id: number }>(sql, [storageId]);
+      const result = await this.query<{ id: string }>(sql, [storageId]);
       return result.length > 0;
     } catch (e) {
       // Fallback: try direct update with cast
@@ -258,7 +258,7 @@ export class StorageRepository extends BaseRepository {
     }
   }
 
-  async confirmStorage(storageId: number): Promise<boolean> {
+  async confirmStorage(storageId: string): Promise<boolean> {
     // First check current status
     const checkSql = `SELECT status::text as status FROM storage WHERE id = $1`;
     const current = await this.queryOne<{ status: string }>(checkSql, [storageId]);
@@ -286,7 +286,7 @@ export class StorageRepository extends BaseRepository {
     `;
     
     try {
-      const result = await this.query<{ id: number }>(sql, [storageId]);
+      const result = await this.query<{ id: string }>(sql, [storageId]);
       return result.length > 0;
     } catch (e) {
       // Fallback: try direct update with cast
@@ -303,7 +303,7 @@ export class StorageRepository extends BaseRepository {
     }
   }
 
-  async cancel(storageId: number): Promise<boolean> {
+  async cancel(storageId: string): Promise<boolean> {
     // First check current status by querying
     const checkSql = `SELECT status::text as status FROM storage WHERE id = $1`;
     const current = await this.queryOne<{ status: string }>(checkSql, [storageId]);

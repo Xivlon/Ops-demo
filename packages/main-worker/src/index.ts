@@ -387,7 +387,7 @@ const worker: ExportedHandler<Env> = {
       // Assign pickup driver
       const assignPickupMatch = path.match(/^\/api\/storage\/([^/]+)\/assign-pickup$/);
       if (assignPickupMatch && method === 'POST') {
-        const storageId = parseInt(assignPickupMatch[1], 10);
+        const storageId = assignPickupMatch[1];
         const body = await request.json() as { driverId: string };
         
         if (!body.driverId) {
@@ -409,7 +409,7 @@ const worker: ExportedHandler<Env> = {
       // Assign delivery driver
       const assignDeliveryMatch = path.match(/^\/api\/storage\/([^/]+)\/assign-delivery$/);
       if (assignDeliveryMatch && method === 'POST') {
-        const storageId = parseInt(assignDeliveryMatch[1], 10);
+        const storageId = assignDeliveryMatch[1];
         const body = await request.json() as { driverId: string };
         
         if (!body.driverId) {
@@ -431,7 +431,7 @@ const worker: ExportedHandler<Env> = {
       // Confirm pickup - mark as picked_up
       const confirmPickupMatch = path.match(/^\/api\/storage\/([^/]+)\/confirm-pickup$/);
       if (confirmPickupMatch && method === 'POST') {
-        const storageId = parseInt(confirmPickupMatch[1], 10);
+        const storageId = confirmPickupMatch[1];
         
         const success = await repos.storage.confirmPickup(storageId);
         
@@ -447,7 +447,7 @@ const worker: ExportedHandler<Env> = {
       // Confirm storage - mark as in_storage
       const confirmStorageMatch = path.match(/^\/api\/storage\/([^/]+)\/confirm-storage$/);
       if (confirmStorageMatch && method === 'POST') {
-        const storageId = parseInt(confirmStorageMatch[1], 10);
+        const storageId = confirmStorageMatch[1];
         
         const success = await repos.storage.confirmStorage(storageId);
         
@@ -463,7 +463,7 @@ const worker: ExportedHandler<Env> = {
       // Update storage status
       const updateStatusMatch = path.match(/^\/api\/storage\/([^/]+)\/status$/);
       if (updateStatusMatch && method === 'POST') {
-        const storageId = parseInt(updateStatusMatch[1], 10);
+        const storageId = updateStatusMatch[1];
         const body = await request.json() as { status: string };
         
         console.log(`[DEBUG] Status update request: storageId=${storageId}, newStatus=${body.status}`);
@@ -473,10 +473,7 @@ const worker: ExportedHandler<Env> = {
           return errorResponse('status is required', 'MISSING_STATUS', 400);
         }
 
-        if (isNaN(storageId)) {
-          await pool.end();
-          return errorResponse('Invalid storage ID', 'INVALID_ID', 400);
-        }
+
 
         const success = await repos.storage.updateStatus(storageId, body.status as any);
         
@@ -494,7 +491,7 @@ const worker: ExportedHandler<Env> = {
       // Cancel storage order
       const cancelStorageMatch = path.match(/^\/api\/storage\/([^/]+)\/cancel$/);
       if (cancelStorageMatch && method === 'POST') {
-        const storageId = parseInt(cancelStorageMatch[1], 10);
+        const storageId = cancelStorageMatch[1];
         
         const success = await repos.storage.cancel(storageId);
         

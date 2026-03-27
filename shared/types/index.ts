@@ -162,8 +162,8 @@ export interface LoginRequest {
 
 // Storage types - matching Neon schema
 export interface Storage {
-  id: number;
-  customer_id: number | null;
+  id: string;
+  customer_id: string | null;
   customer_name: string | null;
   customer_email: string | null;
   customer_phone: string | null;
