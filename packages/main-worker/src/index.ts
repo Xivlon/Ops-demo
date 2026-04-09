@@ -697,6 +697,140 @@ const worker: ExportedHandler<Env> = {
         return jsonResponse({ success: true, data: { message: 'Storage order cancelled' } }, 200, true, origin);
       }
 
+      // ===== EXPORT ENDPOINTS =====
+
+      // Revenue report (weekly, monthly, quarterly, annual)
+      if (path === '/api/reports/revenue' && method === 'GET') {
+        const period = url.searchParams.get('period') || 'monthly';
+        let report;
+        
+        switch (period) {
+          case 'weekly':
+            report = await repos.reports.getWeeklyReport();
+            break;
+          case 'monthly':
+            report = await repos.reports.getMonthlyReport();
+            break;
+          case 'quarterly':
+            report = await repos.reports.getQuarterlyReport();
+            break;
+          case 'annual':
+            report = await repos.reports.getAnnualReport();
+            break;
+          default:
+            await pool.end();
+            return errorResponse('Invalid period. Use: weekly, monthly, quarterly, annual', 'INVALID_PERIOD', 400);
+        }
+        
+        await pool.end();
+        return jsonResponse({ success: true, data: report }, 200, true, origin);
+      }
+
+      // Driver earnings report
+      if (path === '/api/reports/driver-earnings' && method === 'GET') {
+        const period = url.searchParams.get('period') || 'monthly';
+        let startDate, endDate;
+        
+        const now = new Date();
+        switch (period) {
+          case 'weekly':
+            startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+            break;
+          case 'monthly':
+            startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+            break;
+          case 'quarterly':
+            startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString();
+            break;
+          case 'annual':
+            startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000).toISOString();
+            break;
+          default:
+            await pool.end();
+            return errorResponse('Invalid period. Use: weekly, monthly, quarterly, annual', 'INVALID_PERIOD', 400);
+        }
+        endDate = now.toISOString();
+        
+        const earnings = await repos.reports.getDriverEarnings(startDate, endDate);
+        
+        await pool.end();
+        return jsonResponse({ success: true, data: earnings, meta: { period, count: earnings.length } }, 200, true, origin);
+      }
+
+      // Export storage orders as CSV
+      if (path === '/api/export/storage-orders.csv' && method === 'GET') {
+        const days = parseInt(url.searchParams.get('days') || '30', 10);
+        const endDate = new Date().toISOString();
+        const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+        
+        const orders = await repos.reports.getStorageOrdersForExport(startDate, endDate);
+        
+        // Generate CSV
+        const headers = ['ID', 'Created At', 'Status', 'Customer Name', 'Customer Email', 'Customer Phone', 'Price', 'Storage Days', 'Total Bags', 'Pickup Driver', 'Picked Up At'];
+        const rows = orders.map(o => [
+          o.id,
+          o.created_at,
+          o.status,
+          o.customer_name || '',
+          o.customer_email || '',
+          o.customer_phone || '',
+          o.price,
+          o.storage_days,
+          o.total_bags,
+          o.pickup_driver || '',
+          o.picked_up_at || ''
+        ]);
+        
+        const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))].join('\n');
+        
+        await pool.end();
+        return new Response(csv, {
+          status: 200,
+          headers: {
+            'Content-Type': 'text/csv',
+            'Content-Disposition': `attachment; filename="storage-orders-${new Date().toISOString().split('T')[0]}.csv"`,
+            'Access-Control-Allow-Origin': origin || '*',
+          }
+        });
+      }
+
+      // Export transport orders as CSV
+      if (path === '/api/export/transport-orders.csv' && method === 'GET') {
+        const days = parseInt(url.searchParams.get('days') || '30', 10);
+        const endDate = new Date().toISOString();
+        const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+        
+        const orders = await repos.reports.getTransportOrdersForExport(startDate, endDate);
+        
+        // Generate CSV
+        const headers = ['ID', 'Created At', 'Status', 'Customer Name', 'Customer Email', 'Customer Phone', 'Price', 'Origin', 'Destination', 'Driver', 'Delivered At'];
+        const rows = orders.map(o => [
+          o.id,
+          o.created_at,
+          o.status,
+          o.customer_name || '',
+          o.customer_email || '',
+          o.customer_phone || '',
+          o.price,
+          o.origin_airport || '',
+          o.destination_airport || '',
+          o.driver || '',
+          o.delivered_at || ''
+        ]);
+        
+        const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))].join('\n');
+        
+        await pool.end();
+        return new Response(csv, {
+          status: 200,
+          headers: {
+            'Content-Type': 'text/csv',
+            'Content-Disposition': `attachment; filename="transport-orders-${new Date().toISOString().split('T')[0]}.csv"`,
+            'Access-Control-Allow-Origin': origin || '*',
+          }
+        });
+      }
+
       // Legacy query endpoint
       if (path === '/api/neon-query' && method === 'POST') {
         const pin = url.searchParams.get('pin');
