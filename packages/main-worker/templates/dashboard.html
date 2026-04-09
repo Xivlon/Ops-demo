@@ -277,6 +277,21 @@
   </div>
 
   <script>
+    // Debug: Check for service workers and cache
+    console.log('[DEBUG] Service Worker registered:', !!navigator.serviceWorker?.controller);
+    console.log('[DEBUG] localStorage keys:', Object.keys(localStorage));
+    console.log('[DEBUG] sessionStorage keys:', Object.keys(sessionStorage));
+    
+    // Unregister any service workers to prevent caching
+    if (navigator.serviceWorker) {
+        navigator.serviceWorker.getRegistrations().then(registrations => {
+            registrations.forEach(reg => {
+                console.log('[DEBUG] Unregistering service worker:', reg.scope);
+                reg.unregister();
+            });
+        });
+    }
+    
     lucide.createIcons();
     let allShipments = [];
     let allDrivers = [];
@@ -464,16 +479,13 @@
             
             if (!res.ok) throw new Error('Failed to load shipments');
             
-            const { data } = await res.json();
-            allShipments = data || [];
+            const responseData = await res.json();
+            console.log('[DEBUG] Raw API response:', responseData);
             
-            // Debug: log first few shipments to check urgency
-            console.log('Shipments loaded:', allShipments.slice(0, 3).map(s => ({ 
-                id: s.id?.slice(0,8), 
-                status: s.status, 
-                pickup_at: s.pickup_at,
-                urgency: s.urgency 
-            })));
+            allShipments = responseData.data || [];
+            
+            console.log('[DEBUG] Shipments loaded:', allShipments.length, 'orders');
+            console.log('[DEBUG] First order (if any):', allShipments[0]);
             
             document.getElementById('count-badge').innerText = allShipments.length;
             const now = new Date();
