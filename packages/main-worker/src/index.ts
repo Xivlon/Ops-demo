@@ -625,39 +625,6 @@ const worker: ExportedHandler<Env> = {
         return jsonResponse({ success: true, data: { message: 'Dropoff confirmed' } }, 200, true, origin);
       }
 
-      // Schedule pickup - try proxy first if enabled, fallback to direct
-      const schedulePickupMatch = path.match(/^\/api\/storage\/([^/]+)\/schedule-pickup$/);
-      if (schedulePickupMatch && method === 'POST') {
-        const storageId = schedulePickupMatch[1];
-
-        if (USE_STORAGE_WORKER) {
-          try {
-            const response = await proxyToStorageWorker(
-              `/api/storage/${storageId}/schedule-pickup`, 
-              'POST', 
-              {}, 
-              origin,
-              request
-            );
-            await pool.end();
-            return response;
-          } catch (proxyError) {
-            console.log('Schedule pickup proxy failed, falling back to direct:', proxyError);
-          }
-        }
-        
-        // Fallback to direct query
-        const success = await repos.storage.schedulePickup(storageId);
-        
-        if (!success) {
-          await pool.end();
-          return errorResponse('Failed to schedule pickup - order may not be in storage', 'SCHEDULE_FAILED', 400);
-        }
-
-        await pool.end();
-        return jsonResponse({ success: true, data: { message: 'Pickup scheduled' } }, 200, true, origin);
-      }
-
       // Update storage status - try proxy first if enabled, fallback to direct
       const updateStatusMatch = path.match(/^\/api\/storage\/([^/]+)\/status$/);
       if (updateStatusMatch && method === 'POST') {

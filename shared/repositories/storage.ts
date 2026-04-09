@@ -185,20 +185,13 @@ export class StorageRepository extends BaseRepository {
         const status = row.status.toUpperCase();
         const count = parseInt(row.count, 10);
         
-        // Map database enum values to stats
+        // Simplified workflow: Pending Dropoff -> Pending Pickup -> Pickup Confirmed
         switch (status) {
           case 'PENDING_DROPOFF':
             stats.pending += count;
             break;
-          case 'DROPPED_OFF':
-          case 'IN_STORAGE':
-            stats.in_storage += count;
-            break;
           case 'PENDING_PICKUP':
-            stats.ready_for_delivery += count; // Use ready_for_delivery for pending pickup
-            break;
-          case 'SCHEDULED_FOR_DELIVERY':
-            stats.ready_for_delivery += count;
+            stats.in_storage += count; // Bags are in storage waiting for pickup
             break;
           case 'PICKUP_CONFIRMED':
           case 'DELIVERED':
@@ -241,10 +234,10 @@ export class StorageRepository extends BaseRepository {
   }
 
   async confirmDropoff(storageId: string): Promise<boolean> {
-    // Customer has dropped off bags - move to DROPPED_OFF status
+    // Customer has dropped off bags - move directly to PENDING_PICKUP (in storage waiting for pickup)
     const sql = `
       UPDATE storage 
-      SET status = 'DROPPED_OFF',
+      SET status = 'PENDING_PICKUP',
           updated_at = NOW()
       WHERE id = $1
         AND status = 'PENDING_DROPOFF'
@@ -264,21 +257,6 @@ export class StorageRepository extends BaseRepository {
           updated_at = NOW()
       WHERE id = $1
         AND status = 'PENDING_PICKUP'
-      RETURNING id
-    `;
-    
-    const result = await this.query<{ id: string }>(sql, [storageId]);
-    return result.length > 0;
-  }
-
-  async schedulePickup(storageId: string): Promise<boolean> {
-    // Customer wants bags back - schedule pickup
-    const sql = `
-      UPDATE storage 
-      SET status = 'PENDING_PICKUP',
-          updated_at = NOW()
-      WHERE id = $1
-        AND status = 'DROPPED_OFF'
       RETURNING id
     `;
     

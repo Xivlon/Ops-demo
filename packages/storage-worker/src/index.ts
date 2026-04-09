@@ -345,7 +345,7 @@ const worker: ExportedHandler<Env> = {
         }, 200, origin);
       }
 
-      // Confirm dropoff - customer drops off bags
+      // Confirm dropoff - customer drops off bags (moves to PENDING_PICKUP)
       const confirmDropoffMatch = path.match(/^\/api\/storage\/([^/]+)\/confirm-dropoff$/);
       if (confirmDropoffMatch && method === 'POST') {
         const storageId = confirmDropoffMatch[1];
@@ -361,26 +361,6 @@ const worker: ExportedHandler<Env> = {
         return jsonResponse({ 
           success: true, 
           data: { message: 'Dropoff confirmed' },
-          meta: { source: 'storage-worker' }
-        }, 200, origin);
-      }
-
-      // Schedule pickup - customer wants bags back
-      const schedulePickupMatch = path.match(/^\/api\/storage\/([^/]+)\/schedule-pickup$/);
-      if (schedulePickupMatch && method === 'POST') {
-        const storageId = schedulePickupMatch[1];
-        
-        const success = await repos.storage.schedulePickup(storageId);
-        
-        if (!success) {
-          await pool.end();
-          return errorResponse('Failed to schedule pickup - order may not be in storage', 'SCHEDULE_FAILED', 400, origin);
-        }
-
-        await pool.end();
-        return jsonResponse({ 
-          success: true, 
-          data: { message: 'Pickup scheduled' },
           meta: { source: 'storage-worker' }
         }, 200, origin);
       }
