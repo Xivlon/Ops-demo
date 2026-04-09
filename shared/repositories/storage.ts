@@ -216,11 +216,12 @@ export class StorageRepository extends BaseRepository {
       const bagsResult = await this.queryOne<{ total_bags: string }>(bagsSql, [sanitizedDays.toString()]);
       stats.total_bags = parseInt(bagsResult?.total_bags || '0', 10);
       
-      // Get revenue from price_cents (all orders, not just delivered)
+      // Get revenue from price_cents (only count when drop-off is confirmed - not pending dropoff)
       const revenueSql = `
         SELECT COALESCE(SUM(price_cents), 0) / 100.0 as total_revenue
         FROM storage 
         WHERE created_at > NOW() - ($1 || ' days')::INTERVAL
+          AND status != 'PENDING_DROPOFF'
       `;
       const revenueResult = await this.queryOne<{ total_revenue: string }>(revenueSql, [sanitizedDays.toString()]);
       stats.total_revenue = parseFloat(revenueResult?.total_revenue || '0');
