@@ -189,12 +189,12 @@
     </div>
 
     <!-- Stats Grid - 5 evenly spaced cards -->
-    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3" id="stats-grid">
-        <div class="bg-slate-800 h-20 rounded-xl animate-pulse"></div>
-        <div class="bg-slate-800 h-20 rounded-xl animate-pulse"></div>
-        <div class="bg-slate-800 h-20 rounded-xl animate-pulse"></div>
-        <div class="bg-slate-800 h-20 rounded-xl animate-pulse"></div>
-        <div class="bg-slate-800 h-20 rounded-xl animate-pulse"></div>
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-4" id="stats-grid">
+        <div class="bg-slate-800 h-28 rounded-xl animate-pulse"></div>
+        <div class="bg-slate-800 h-28 rounded-xl animate-pulse"></div>
+        <div class="bg-slate-800 h-28 rounded-xl animate-pulse"></div>
+        <div class="bg-slate-800 h-28 rounded-xl animate-pulse"></div>
+        <div class="bg-slate-800 h-28 rounded-xl animate-pulse"></div>
     </div>
 
     <!-- Storage Table -->
@@ -354,17 +354,17 @@
             if (status) {
                 const isActive = currentStatusFilter === status;
                 const activeClass = isActive ? 'ring-2 ring-green-500 bg-slate-700' : '';
-                return `<div data-status="${status}" onclick="setStatusFilter('${status}')" class="stat-card ${activeClass} bg-slate-800 rounded-xl p-3 border border-slate-700 relative overflow-hidden group hover:border-${color}-500/50 transition-all cursor-pointer hover:bg-slate-750">
-                       <div class="absolute top-0 right-0 w-12 h-12 bg-${color}-500/10 rounded-bl-full -mr-2 -mt-2 transition-transform group-hover:scale-110"></div>
-                       <div class="text-slate-400 text-[9px] font-bold uppercase tracking-wider mb-0.5">${label}</div>
-                       <div class="text-xl font-black text-${color}-400 relative z-10">${val || 0}</div>
+                return `<div data-status="${status}" onclick="setStatusFilter('${status}')" class="stat-card ${activeClass} bg-slate-800 rounded-xl p-5 border border-slate-700 relative overflow-hidden group hover:border-${color}-500/50 transition-all cursor-pointer hover:bg-slate-750">
+                       <div class="absolute top-0 right-0 w-20 h-20 bg-${color}-500/10 rounded-bl-full -mr-2 -mt-2 transition-transform group-hover:scale-110"></div>
+                       <div class="text-slate-400 text-[11px] font-bold uppercase tracking-wider mb-1">${label}</div>
+                       <div class="text-3xl font-black text-${color}-400 relative z-10">${val || 0}</div>
                        </div>`;
             }
             
-            return `<div class="bg-slate-800 rounded-xl p-3 border border-slate-700 relative overflow-hidden group">
-                   <div class="absolute top-0 right-0 w-12 h-12 bg-${color}-500/10 rounded-bl-full -mr-2 -mt-2"></div>
-                   <div class="text-slate-400 text-[9px] font-bold uppercase tracking-wider mb-0.5">${label}</div>
-                   <div class="text-xl font-black text-${color}-400 relative z-10">${val || 0}</div>
+            return `<div class="bg-slate-800 rounded-xl p-5 border border-slate-700 relative overflow-hidden group">
+                   <div class="absolute top-0 right-0 w-20 h-20 bg-${color}-500/10 rounded-bl-full -mr-2 -mt-2"></div>
+                   <div class="text-slate-400 text-[11px] font-bold uppercase tracking-wider mb-1">${label}</div>
+                   <div class="text-3xl font-black text-${color}-400 relative z-10">${val || 0}</div>
                    </div>`;
         };
 
