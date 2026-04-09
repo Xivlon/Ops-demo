@@ -3,6 +3,10 @@ import type { ApiResponse } from '../types';
 export function jsonResponse<T>(data: ApiResponse<T>, status = 200, cors = true, requestOrigin: string | null = null): Response {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    // Prevent caching of API responses
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
   };
   
   if (cors) {

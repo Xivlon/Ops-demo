@@ -18,18 +18,31 @@ export class ShipmentRepository extends BaseRepository {
     return this.queryOne<Shipment>(sql, [id]);
   }
 
+  // Validate and sanitize days parameter
+  private sanitizeDays(days: number): number {
+    return Math.max(1, Math.min(365, Math.floor(days)));
+  }
+
+  // Validate and sanitize limit parameter  
+  private sanitizeLimit(limit: number): number {
+    return Math.max(1, Math.min(1000, Math.floor(limit)));
+  }
+
   async list(params: ListShipmentsParams = {}): Promise<Shipment[]> {
-    const { status, limit = 100, days = 30 } = params;
+    const { status } = params;
+    const limit = this.sanitizeLimit(params.limit ?? 100);
+    const days = this.sanitizeDays(params.days ?? 30);
     
+    // Use parameterized interval to prevent SQL injection
     let sql = `
       SELECT s.*, CONCAT(d.first_name, ' ', d.last_name) as driver_name
       FROM shipments s
       LEFT JOIN driver_profiles d ON s.driver_id = d.id
-      WHERE s.created_at > NOW() - INTERVAL '${days} days'
+      WHERE s.created_at > NOW() - ($1 || ' days')::INTERVAL
     `;
     
-    const queryParams: (string | number)[] = [];
-    let paramIndex = 1;
+    const queryParams: (string | number)[] = [days.toString()];
+    let paramIndex = 2;
 
     if (status) {
       sql += ` AND s.status = $${paramIndex}`;
@@ -77,6 +90,7 @@ export class ShipmentRepository extends BaseRepository {
 
   async getDashboardStats(days = 30): Promise<DashboardStats> {
     try {
+      const sanitizedDays = this.sanitizeDays(days);
       const sql = `
         SELECT 
           COUNT(*) FILTER (WHERE status = 'PENDING') as pending,
@@ -88,9 +102,9 @@ export class ShipmentRepository extends BaseRepository {
           (SELECT COUNT(*) FROM driver_profiles WHERE is_online = true) as online_drivers,
           (SELECT COUNT(*) FROM driver_profiles) as total_drivers
         FROM shipments 
-        WHERE created_at > NOW() - INTERVAL '${days} days'
+        WHERE created_at > NOW() - ($1 || ' days')::INTERVAL
       `;
-      return this.queryOne<DashboardStats>(sql) as Promise<DashboardStats>;
+      return this.queryOne<DashboardStats>(sql, [sanitizedDays.toString()]) as Promise<DashboardStats>;
     } catch (error) {
       console.error('Dashboard stats query failed:', error);
       throw error;
@@ -98,12 +112,13 @@ export class ShipmentRepository extends BaseRepository {
   }
 
   async countByStatus(status: ShipmentStatus, days = 30): Promise<number> {
+    const sanitizedDays = this.sanitizeDays(days);
     const sql = `
       SELECT COUNT(*) as count
       FROM shipments
-      WHERE status = $1 AND created_at > NOW() - INTERVAL '${days} days'
+      WHERE status = $1 AND created_at > NOW() - ($2 || ' days')::INTERVAL
     `;
-    const result = await this.query<{ count: string }>(sql, [status]);
+    const result = await this.query<{ count: string }>(sql, [status, sanitizedDays.toString()]);
     return parseInt(result[0]?.count || '0', 10);
   }
 
