@@ -188,8 +188,9 @@
       </div>
     </div>
 
-    <!-- Stats Grid - 5 evenly spaced cards -->
-    <div class="grid grid-cols-2 md:grid-cols-5 gap-4" id="stats-grid">
+    <!-- Stats Grid - 6 evenly spaced cards -->
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4" id="stats-grid">
+        <div class="bg-slate-800 h-28 rounded-xl animate-pulse"></div>
         <div class="bg-slate-800 h-28 rounded-xl animate-pulse"></div>
         <div class="bg-slate-800 h-28 rounded-xl animate-pulse"></div>
         <div class="bg-slate-800 h-28 rounded-xl animate-pulse"></div>
@@ -371,12 +372,14 @@
         const grid = document.getElementById('stats-grid');
         
         // Show stats based on simplified workflow
+        const totalRevenue = (data.total_revenue || 0).toFixed(2);
         grid.innerHTML = 
             makeCard('Pending Dropoff', data.pending, 'yellow', 'pending_dropoff') +
             makeCard('In Storage', data.in_storage, 'blue', 'pending_pickup') +
             makeCard('Pickup Confirmed', data.delivered, 'green', 'pickup_confirmed') +
             makeCard('Cancelled', data.cancelled, 'red', 'cancelled') +
-            makeCard('Total Bags', data.total_bags, 'cyan');
+            makeCard('Total Bags', data.total_bags, 'cyan') +
+            makeCard('Revenue', '$' + totalRevenue, 'emerald');
     }
 
     async function loadStats() {

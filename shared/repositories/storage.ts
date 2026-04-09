@@ -216,12 +216,11 @@ export class StorageRepository extends BaseRepository {
       const bagsResult = await this.queryOne<{ total_bags: string }>(bagsSql, [sanitizedDays.toString()]);
       stats.total_bags = parseInt(bagsResult?.total_bags || '0', 10);
       
-      // Get revenue from delivered orders only
+      // Get revenue from price_cents (all orders, not just delivered)
       const revenueSql = `
-        SELECT COALESCE(SUM(total_price_cents), 0) / 100.0 as total_revenue
+        SELECT COALESCE(SUM(price_cents), 0) / 100.0 as total_revenue
         FROM storage 
         WHERE created_at > NOW() - ($1 || ' days')::INTERVAL
-          AND LOWER(status::text) IN ('delivered', 'completed')
       `;
       const revenueResult = await this.queryOne<{ total_revenue: string }>(revenueSql, [sanitizedDays.toString()]);
       stats.total_revenue = parseFloat(revenueResult?.total_revenue || '0');
