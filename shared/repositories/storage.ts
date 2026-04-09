@@ -187,15 +187,20 @@ export class StorageRepository extends BaseRepository {
         
         // Map database enum values to stats
         switch (status) {
-          case 'PENDING_PICKUP':
+          case 'PENDING_DROPOFF':
             stats.pending += count;
             break;
+          case 'DROPPED_OFF':
           case 'IN_STORAGE':
             stats.in_storage += count;
+            break;
+          case 'PENDING_PICKUP':
+            stats.ready_for_delivery += count; // Use ready_for_delivery for pending pickup
             break;
           case 'SCHEDULED_FOR_DELIVERY':
             stats.ready_for_delivery += count;
             break;
+          case 'PICKUP_CONFIRMED':
           case 'DELIVERED':
             stats.delivered += count;
             break;
@@ -235,11 +240,26 @@ export class StorageRepository extends BaseRepository {
     }
   }
 
-  async confirmPickup(storageId: string): Promise<boolean> {
-    // Use correct enum value: IN_STORAGE (represents picked up and in storage)
+  async confirmDropoff(storageId: string): Promise<boolean> {
+    // Customer has dropped off bags - move to DROPPED_OFF status
     const sql = `
       UPDATE storage 
-      SET status = 'IN_STORAGE',
+      SET status = 'DROPPED_OFF',
+          updated_at = NOW()
+      WHERE id = $1
+        AND status = 'PENDING_DROPOFF'
+      RETURNING id
+    `;
+    
+    const result = await this.query<{ id: string }>(sql, [storageId]);
+    return result.length > 0;
+  }
+
+  async confirmPickup(storageId: string): Promise<boolean> {
+    // Driver has picked up bags - move to PICKUP_CONFIRMED status
+    const sql = `
+      UPDATE storage 
+      SET status = 'PICKUP_CONFIRMED',
           picked_up_at = NOW(),
           updated_at = NOW()
       WHERE id = $1
@@ -251,14 +271,14 @@ export class StorageRepository extends BaseRepository {
     return result.length > 0;
   }
 
-  async confirmStorage(storageId: string): Promise<boolean> {
-    // Already in IN_STORAGE status after pickup - this is a no-op
-    // Just verify the order exists and is in correct state
+  async schedulePickup(storageId: string): Promise<boolean> {
+    // Customer wants bags back - schedule pickup
     const sql = `
       UPDATE storage 
-      SET updated_at = NOW()
+      SET status = 'PENDING_PICKUP',
+          updated_at = NOW()
       WHERE id = $1
-        AND status = 'IN_STORAGE'
+        AND status = 'DROPPED_OFF'
       RETURNING id
     `;
     

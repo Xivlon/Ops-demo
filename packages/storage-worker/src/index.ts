@@ -345,7 +345,47 @@ const worker: ExportedHandler<Env> = {
         }, 200, origin);
       }
 
-      // Confirm pickup - mark as picked_up
+      // Confirm dropoff - customer drops off bags
+      const confirmDropoffMatch = path.match(/^\/api\/storage\/([^/]+)\/confirm-dropoff$/);
+      if (confirmDropoffMatch && method === 'POST') {
+        const storageId = confirmDropoffMatch[1];
+        
+        const success = await repos.storage.confirmDropoff(storageId);
+        
+        if (!success) {
+          await pool.end();
+          return errorResponse('Failed to confirm dropoff - order may not be in pending dropoff status', 'CONFIRM_FAILED', 400, origin);
+        }
+
+        await pool.end();
+        return jsonResponse({ 
+          success: true, 
+          data: { message: 'Dropoff confirmed' },
+          meta: { source: 'storage-worker' }
+        }, 200, origin);
+      }
+
+      // Schedule pickup - customer wants bags back
+      const schedulePickupMatch = path.match(/^\/api\/storage\/([^/]+)\/schedule-pickup$/);
+      if (schedulePickupMatch && method === 'POST') {
+        const storageId = schedulePickupMatch[1];
+        
+        const success = await repos.storage.schedulePickup(storageId);
+        
+        if (!success) {
+          await pool.end();
+          return errorResponse('Failed to schedule pickup - order may not be in storage', 'SCHEDULE_FAILED', 400, origin);
+        }
+
+        await pool.end();
+        return jsonResponse({ 
+          success: true, 
+          data: { message: 'Pickup scheduled' },
+          meta: { source: 'storage-worker' }
+        }, 200, origin);
+      }
+
+      // Confirm pickup - driver picks up bags
       const confirmPickupMatch = path.match(/^\/api\/storage\/([^/]+)\/confirm-pickup$/);
       if (confirmPickupMatch && method === 'POST') {
         const storageId = confirmPickupMatch[1];
@@ -354,33 +394,13 @@ const worker: ExportedHandler<Env> = {
         
         if (!success) {
           await pool.end();
-          return errorResponse('Failed to confirm pickup - order may not be in pending status', 'CONFIRM_FAILED', 400, origin);
+          return errorResponse('Failed to confirm pickup - order may not be in pending pickup status', 'CONFIRM_FAILED', 400, origin);
         }
 
         await pool.end();
         return jsonResponse({ 
           success: true, 
           data: { message: 'Pickup confirmed' },
-          meta: { source: 'storage-worker' }
-        }, 200, origin);
-      }
-
-      // Confirm storage - mark as in_storage
-      const confirmStorageMatch = path.match(/^\/api\/storage\/([^/]+)\/confirm-storage$/);
-      if (confirmStorageMatch && method === 'POST') {
-        const storageId = confirmStorageMatch[1];
-        
-        const success = await repos.storage.confirmStorage(storageId);
-        
-        if (!success) {
-          await pool.end();
-          return errorResponse('Failed to confirm storage - order may not be in picked_up status', 'CONFIRM_FAILED', 400, origin);
-        }
-
-        await pool.end();
-        return jsonResponse({ 
-          success: true, 
-          data: { message: 'Storage confirmed' },
           meta: { source: 'storage-worker' }
         }, 200, origin);
       }

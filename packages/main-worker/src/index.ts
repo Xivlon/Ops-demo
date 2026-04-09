@@ -592,15 +592,15 @@ const worker: ExportedHandler<Env> = {
         return jsonResponse({ success: true, data: { message: 'Pickup confirmed' } }, 200, true, origin);
       }
 
-      // Confirm storage - try proxy first if enabled, fallback to direct
-      const confirmStorageMatch = path.match(/^\/api\/storage\/([^/]+)\/confirm-storage$/);
-      if (confirmStorageMatch && method === 'POST') {
-        const storageId = confirmStorageMatch[1];
+      // Confirm dropoff - try proxy first if enabled, fallback to direct
+      const confirmDropoffMatch = path.match(/^\/api\/storage\/([^/]+)\/confirm-dropoff$/);
+      if (confirmDropoffMatch && method === 'POST') {
+        const storageId = confirmDropoffMatch[1];
 
         if (USE_STORAGE_WORKER) {
           try {
             const response = await proxyToStorageWorker(
-              `/api/storage/${storageId}/confirm-storage`, 
+              `/api/storage/${storageId}/confirm-dropoff`, 
               'POST', 
               {}, 
               origin,
@@ -609,20 +609,53 @@ const worker: ExportedHandler<Env> = {
             await pool.end();
             return response;
           } catch (proxyError) {
-            console.log('Confirm storage proxy failed, falling back to direct:', proxyError);
+            console.log('Confirm dropoff proxy failed, falling back to direct:', proxyError);
           }
         }
         
         // Fallback to direct query
-        const success = await repos.storage.confirmStorage(storageId);
+        const success = await repos.storage.confirmDropoff(storageId);
         
         if (!success) {
           await pool.end();
-          return errorResponse('Failed to confirm storage - order may not be in picked_up status', 'CONFIRM_FAILED', 400);
+          return errorResponse('Failed to confirm dropoff - order may not be in pending dropoff status', 'CONFIRM_FAILED', 400);
         }
 
         await pool.end();
-        return jsonResponse({ success: true, data: { message: 'Storage confirmed' } }, 200, true, origin);
+        return jsonResponse({ success: true, data: { message: 'Dropoff confirmed' } }, 200, true, origin);
+      }
+
+      // Schedule pickup - try proxy first if enabled, fallback to direct
+      const schedulePickupMatch = path.match(/^\/api\/storage\/([^/]+)\/schedule-pickup$/);
+      if (schedulePickupMatch && method === 'POST') {
+        const storageId = schedulePickupMatch[1];
+
+        if (USE_STORAGE_WORKER) {
+          try {
+            const response = await proxyToStorageWorker(
+              `/api/storage/${storageId}/schedule-pickup`, 
+              'POST', 
+              {}, 
+              origin,
+              request
+            );
+            await pool.end();
+            return response;
+          } catch (proxyError) {
+            console.log('Schedule pickup proxy failed, falling back to direct:', proxyError);
+          }
+        }
+        
+        // Fallback to direct query
+        const success = await repos.storage.schedulePickup(storageId);
+        
+        if (!success) {
+          await pool.end();
+          return errorResponse('Failed to schedule pickup - order may not be in storage', 'SCHEDULE_FAILED', 400);
+        }
+
+        await pool.end();
+        return jsonResponse({ success: true, data: { message: 'Pickup scheduled' } }, 200, true, origin);
       }
 
       // Update storage status - try proxy first if enabled, fallback to direct
