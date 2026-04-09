@@ -174,35 +174,34 @@ export class StorageRepository extends BaseRepository {
         total_revenue: 0
       };
       
-      // Map returned statuses to our stats object (normalize to lowercase)
+      // Map returned statuses to our stats object (using actual database enum values)
       for (const row of statusRows) {
-        // Skip null/undefined statuses
+        // Null status counts as cancelled
         if (!row.status) {
+          stats.cancelled += parseInt(row.count, 10);
           continue;
         }
         
-        const status = row.status.toLowerCase();
+        const status = row.status.toUpperCase();
         const count = parseInt(row.count, 10);
         
-        // Map various possible status names to our canonical names
-        // pending_pickup counts as pending
-        if (status === 'pending' || status === 'pending_pickup') {
-          stats.pending += count;
-        }
-        else if (status === 'picked_up' || status === 'pickedup') {
-          stats.picked_up += count;
-        }
-        else if (status === 'in_storage' || status === 'instorage') {
-          stats.in_storage += count;
-        }
-        else if (status === 'ready_for_delivery' || status === 'readyfordelivery' || status === 'ready') {
-          stats.ready_for_delivery += count;
-        }
-        else if (status === 'delivered' || status === 'completed') {
-          stats.delivered += count;
-        }
-        else if (status === 'cancelled' || status === 'canceled') {
-          stats.cancelled += count;
+        // Map database enum values to stats
+        switch (status) {
+          case 'PENDING_PICKUP':
+            stats.pending += count;
+            break;
+          case 'IN_STORAGE':
+            stats.in_storage += count;
+            break;
+          case 'SCHEDULED_FOR_DELIVERY':
+            stats.ready_for_delivery += count;
+            break;
+          case 'DELIVERED':
+            stats.delivered += count;
+            break;
+          default:
+            // Unknown status - count as cancelled
+            stats.cancelled += count;
         }
       }
       
@@ -237,103 +236,73 @@ export class StorageRepository extends BaseRepository {
   }
 
   async confirmPickup(storageId: string): Promise<boolean> {
-    // Atomic update: status check and update in a single operation
-    // This prevents race conditions where status could change between check and update
+    // Use correct enum value: IN_STORAGE (represents picked up and in storage)
     const sql = `
       UPDATE storage 
-      SET status = (
-        SELECT enumlabel::storage_status 
-        FROM pg_enum 
-        WHERE enumtypid = 'storage_status'::regtype 
-        AND LOWER(enumlabel) = 'picked_up'
-        LIMIT 1
-      ),
+      SET status = 'IN_STORAGE',
           picked_up_at = NOW(),
           updated_at = NOW()
       WHERE id = $1
-        AND LOWER(status::text) IN ('pending', 'pending_pickup', 'booked', 'scheduled')
+        AND status = 'PENDING_PICKUP'
       RETURNING id
     `;
     
-    try {
-      const result = await this.query<{ id: string }>(sql, [storageId]);
-      return result.length > 0;
-    } catch (e) {
-      // Fallback: try direct update with cast
-      const fallbackSql = `
-        UPDATE storage 
-        SET status = 'picked_up'::text::storage_status,
-            picked_up_at = NOW(),
-            updated_at = NOW()
-        WHERE id = $1
-          AND LOWER(status::text) IN ('pending', 'pending_pickup', 'booked', 'scheduled')
-        RETURNING id
-      `;
-      const result = await this.query<{ id: string }>(fallbackSql, [storageId]);
-      return result.length > 0;
-    }
+    const result = await this.query<{ id: string }>(sql, [storageId]);
+    return result.length > 0;
   }
 
   async confirmStorage(storageId: string): Promise<boolean> {
-    // Atomic update: status check and update in a single operation
-    // This prevents race conditions where status could change between check and update
+    // Already in IN_STORAGE status after pickup - this is a no-op
+    // Just verify the order exists and is in correct state
     const sql = `
       UPDATE storage 
-      SET status = (
-        SELECT enumlabel::storage_status 
-        FROM pg_enum 
-        WHERE enumtypid = 'storage_status'::regtype 
-        AND LOWER(enumlabel) = 'in_storage'
-        LIMIT 1
-      ),
-          updated_at = NOW()
+      SET updated_at = NOW()
       WHERE id = $1
-        AND LOWER(status::text) IN ('picked_up', 'pickedup', 'collected')
+        AND status = 'IN_STORAGE'
       RETURNING id
     `;
     
-    try {
-      const result = await this.query<{ id: string }>(sql, [storageId]);
-      return result.length > 0;
-    } catch (e) {
-      // Fallback: try direct update with cast
-      const fallbackSql = `
-        UPDATE storage 
-        SET status = 'in_storage'::text::storage_status,
-            updated_at = NOW()
-        WHERE id = $1
-          AND LOWER(status::text) IN ('picked_up', 'pickedup', 'collected')
-        RETURNING id
-      `;
-      const result = await this.query<{ id: string }>(fallbackSql, [storageId]);
-      return result.length > 0;
-    }
+    const result = await this.query<{ id: string }>(sql, [storageId]);
+    return result.length > 0;
   }
 
   async cancel(storageId: string): Promise<boolean> {
-    // Atomic update: status check (NOT IN final statuses) and update in a single operation
-    // This prevents race conditions where status could change between check and update
-    const sql = `
-      UPDATE storage 
-      SET status = $2::text::storage_status,
-          updated_at = NOW()
-      WHERE id = $1
-        AND LOWER(status::text) NOT IN ('delivered', 'completed', 'cancelled', 'canceled')
-      RETURNING id
+    // Check if there's a cancelled status in the enum, otherwise use null with a flag
+    const checkEnumSql = `
+      SELECT enumlabel 
+      FROM pg_enum 
+      WHERE enumtypid = 'storage_status'::regtype 
+      AND LOWER(enumlabel) LIKE '%cancel%'
+      LIMIT 1
     `;
+    const enumResult = await this.query<{ enumlabel: string }>(checkEnumSql);
+    const cancelStatus = enumResult[0]?.enumlabel;
     
-    // Try common variants of 'cancelled'
-    const cancelVariants = ['cancelled', 'canceled', 'CANCELLED', 'CANCELED'];
-    for (const variant of cancelVariants) {
-      try {
-        const result = await this.query<{ id: string }>(sql, [storageId, variant]);
-        if (result.length > 0) return true;
-      } catch (e) {
-        // Try next variant
-        continue;
-      }
+    if (cancelStatus) {
+      // Use the actual cancelled status from enum
+      const sql = `
+        UPDATE storage 
+        SET status = $2,
+            updated_at = NOW()
+        WHERE id = $1
+          AND status NOT IN ('DELIVERED')
+        RETURNING id
+      `;
+      const result = await this.query<{ id: string }>(sql, [storageId, cancelStatus]);
+      return result.length > 0;
+    } else {
+      // No cancelled status in enum - just set status to null as cancelled
+      const sql = `
+        UPDATE storage 
+        SET status = null,
+            updated_at = NOW()
+        WHERE id = $1
+          AND status NOT IN ('DELIVERED')
+        RETURNING id
+      `;
+      const result = await this.query<{ id: string }>(sql, [storageId]);
+      return result.length > 0;
     }
-    return false;
   }
 
   // Get total bag count for a storage order
