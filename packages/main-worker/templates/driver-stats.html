@@ -568,25 +568,34 @@
       setTimeout(() => div.remove(), 3000);
     }
 
-    // Export functions
-    async function downloadDriverEarnings() {
-        const period = document.getElementById('export-period').value;
+    // Export functions - uses existing driver data from page
+    function downloadDriverEarnings() {
+        if (allDrivers.length === 0) {
+            showToast('No driver data available. Please wait for data to load.', 'red');
+            return;
+        }
+        
         try {
             showToast('Generating driver earnings report...', 'green');
-            const res = await fetch(`/api/reports/driver-earnings?period=${period}`, {
-                headers: { 'Accept': 'application/json' },
-                credentials: 'include'
-            });
             
-            if (!res.ok) throw new Error('Failed to generate report');
+            // Use existing allDrivers data that already has all summary info
+            let csv = 'Driver Name,Email,Total Assigned,Total Completed,Total Revenue,Week Completed,Week Revenue,Month Completed,Month Revenue,Success Rate,Cancel Rate,Status\n';
             
-            const result = await res.json();
-            const data = result.data;
-            
-            // Convert to CSV
-            let csv = 'Driver Name,Email,Transport Earnings,Completed Orders\n';
-            data.forEach(d => {
-                csv += `"${d.driverName}","${d.email}",${d.transportEarnings},${d.completedOrders}\n`;
+            allDrivers.forEach(d => {
+                const name = (d.first_name + ' ' + d.last_name).trim() || 'Unknown';
+                const email = d.email || '';
+                const totalAssigned = d.total_assigned || 0;
+                const totalCompleted = d.total_completed || 0;
+                const totalRevenue = parseFloat(d.total_revenue || 0).toFixed(2);
+                const weekCompleted = d.week_completed || 0;
+                const weekRevenue = parseFloat(d.week_revenue || 0).toFixed(2);
+                const monthCompleted = d.month_completed || 0;
+                const monthRevenue = parseFloat(d.month_revenue || 0).toFixed(2);
+                const successRate = d.success_rate ? parseFloat(d.success_rate).toFixed(1) + '%' : 'N/A';
+                const cancelRate = d.cancel_rate ? parseFloat(d.cancel_rate).toFixed(1) + '%' : 'N/A';
+                const status = d.is_online ? 'Online' : 'Offline';
+                
+                csv += `"${name}","${email}",${totalAssigned},${totalCompleted},${totalRevenue},${weekCompleted},${weekRevenue},${monthCompleted},${monthRevenue},${successRate},${cancelRate},${status}\n`;
             });
             
             // Download
@@ -594,7 +603,7 @@
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `driver-earnings-${period}-${new Date().toISOString().split('T')[0]}.csv`;
+            a.download = `driver-earnings-summary-${new Date().toISOString().split('T')[0]}.csv`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -603,7 +612,7 @@
             showToast('Driver earnings downloaded!', 'green');
         } catch (e) {
             console.error(e);
-            showToast('Failed to download report', 'red');
+            showToast('Failed to generate report', 'red');
         }
     }
 
