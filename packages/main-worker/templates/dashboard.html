@@ -400,7 +400,9 @@
 
     async function loadStats() {
         try {
-            const res = await fetch('/api/dashboard/stats', {
+            // Add cache-busting to prevent browser caching
+            const cacheBuster = Date.now();
+            const res = await fetch(`/api/dashboard/stats?_cb=${cacheBuster}`, {
                 headers: { 'Accept': 'application/json' },
                 credentials: 'include'
             });
@@ -453,7 +455,9 @@
     async function loadShipments() {
         const tbody = document.getElementById('table-body');
         try {
-            const res = await fetch('/api/shipments', {
+            // Add cache-busting to prevent browser caching
+            const cacheBuster = Date.now();
+            const res = await fetch(`/api/shipments?_cb=${cacheBuster}`, {
                 headers: { 'Accept': 'application/json' },
                 credentials: 'include'
             });
