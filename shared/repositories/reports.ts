@@ -75,28 +75,17 @@ export class ReportsRepository extends BaseRepository {
     };
   }
 
-  // Get driver earnings for a date range
+  // Get driver earnings for a date range (only delivered shipments)
   async getDriverEarnings(startDate: string, endDate: string): Promise<DriverEarnings[]> {
     const sql = `
       SELECT 
         dp.id as driver_id,
         CONCAT(dp.first_name, ' ', dp.last_name) as driver_name,
         dp.email,
-        COALESCE(storage_earnings.earnings, 0) as storage_earnings,
+        0 as storage_earnings,
         COALESCE(transport_earnings.earnings, 0) as transport_earnings,
-        COALESCE(storage_earnings.completed_orders, 0) + COALESCE(transport_earnings.completed_orders, 0) as completed_orders
+        COALESCE(transport_earnings.completed_orders, 0) as completed_orders
       FROM driver_profiles dp
-      LEFT JOIN (
-        SELECT 
-          pickup_driver_id as driver_id,
-          COALESCE(SUM(price_cents), 0) / 100.0 as earnings,
-          COUNT(*) as completed_orders
-        FROM storage
-        WHERE created_at >= $1 
-          AND created_at < $2
-          AND status IN ('PICKUP_CONFIRMED', 'DELIVERED')
-        GROUP BY pickup_driver_id
-      ) storage_earnings ON storage_earnings.driver_id = dp.id
       LEFT JOIN (
         SELECT 
           driver_id,
@@ -108,8 +97,8 @@ export class ReportsRepository extends BaseRepository {
           AND status = 'DELIVERED'
         GROUP BY driver_id
       ) transport_earnings ON transport_earnings.driver_id = dp.id
-      WHERE storage_earnings.earnings > 0 OR transport_earnings.earnings > 0
-      ORDER BY (COALESCE(storage_earnings.earnings, 0) + COALESCE(transport_earnings.earnings, 0)) DESC
+      WHERE transport_earnings.earnings > 0
+      ORDER BY COALESCE(transport_earnings.earnings, 0) DESC
     `;
 
     const rows = await this.query<{
@@ -125,9 +114,9 @@ export class ReportsRepository extends BaseRepository {
       driverId: row.driver_id,
       driverName: row.driver_name,
       email: row.email,
-      storageEarnings: parseFloat(row.storage_earnings),
+      storageEarnings: 0,
       transportEarnings: parseFloat(row.transport_earnings),
-      totalEarnings: parseFloat(row.storage_earnings) + parseFloat(row.transport_earnings),
+      totalEarnings: parseFloat(row.transport_earnings),
       completedOrders: parseInt(row.completed_orders, 10)
     }));
   }
