@@ -25,6 +25,11 @@ const DRIVER_STATS_WORKER_URL = 'https://driver-stats.constance-api.workers.dev'
 const USE_DRIVER_STATS_WORKER = true; // Set to false to use direct queries
 const DRIVER_STATS_TIMEOUT_MS = 10000; // 10 second timeout for proxy requests
 
+// Configuration for storage worker
+const STORAGE_WORKER_URL = 'https://storage.constance-api.workers.dev';
+const USE_STORAGE_WORKER = true; // Set to false to disable storage worker and use direct queries
+const STORAGE_TIMEOUT_MS = 10000; // 10 second timeout for proxy requests
+
 // Create a new pool for each request (Cloudflare Workers requirement)
 function createPool(env: Env): Pool {
   if (!env.DATABASE_URL) {
@@ -98,6 +103,63 @@ async function proxyToDriverStatsWorker(endpoint: string, origin: string | null)
   }
 }
 
+// Helper to proxy requests to storage worker
+async function proxyToStorageWorker(
+  endpoint: string, 
+  method: string, 
+  body: unknown | null, 
+  origin: string | null
+): Promise<Response> {
+  if (!USE_STORAGE_WORKER) {
+    throw new Error('Storage worker not enabled');
+  }
+
+  try {
+    const url = `${STORAGE_WORKER_URL}${endpoint}`;
+    console.log(`[PROXY] Storage worker: ${method} ${url}`);
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), STORAGE_TIMEOUT_MS);
+    
+    const fetchOptions: RequestInit = {
+      method,
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    };
+    
+    if (body && method !== 'GET') {
+      fetchOptions.body = JSON.stringify(body);
+    }
+    
+    const response = await fetch(url, fetchOptions);
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Storage worker responded with ${response.status}: ${errorText}`);
+    }
+    
+    // Get the raw response body and pass it through with CORS headers
+    const responseBody = await response.text();
+    
+    return new Response(responseBody, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': origin || '*',
+        'Access-Control-Allow-Credentials': 'true',
+      }
+    });
+    
+  } catch (error) {
+    console.error('Storage proxy error:', error);
+    throw error;
+  }
+}
+
 const worker: ExportedHandler<Env> = {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -122,7 +184,9 @@ const worker: ExportedHandler<Env> = {
             connected: isConnected,
             message: 'Database connection OK',
             driverStatsWorkerEnabled: USE_DRIVER_STATS_WORKER,
-            driverStatsWorkerUrl: DRIVER_STATS_WORKER_URL
+            driverStatsWorkerUrl: DRIVER_STATS_WORKER_URL,
+            storageWorkerEnabled: USE_STORAGE_WORKER,
+            storageWorkerUrl: STORAGE_WORKER_URL
           }
         }, 200, true, origin);
       } catch (error) {
@@ -362,13 +426,20 @@ const worker: ExportedHandler<Env> = {
 
       // ===== STORAGE ENDPOINTS =====
       
-      // Debug logging for storage routes
-      if (path.startsWith('/api/storage')) {
-        console.log(`[DEBUG STORAGE] ${method} ${path}`);
-      }
-
-      // Storage list
+      // Storage list - try proxy first if enabled, fallback to direct
       if (path === '/api/storage' && method === 'GET') {
+        if (USE_STORAGE_WORKER) {
+          try {
+            const queryString = url.search;
+            const response = await proxyToStorageWorker(`/api/storage${queryString}`, 'GET', null, origin);
+            await pool.end();
+            return response;
+          } catch (proxyError) {
+            console.log('Storage worker proxy failed, falling back to direct:', proxyError);
+          }
+        }
+        
+        // Fallback to direct query
         const status = url.searchParams.get('status') as any;
         const limit = parseInt(url.searchParams.get('limit') || '100', 10);
         const days = parseInt(url.searchParams.get('days') || '30', 10);
@@ -382,14 +453,27 @@ const worker: ExportedHandler<Env> = {
         return jsonResponse({ success: true, data: storage }, 200, true, origin);
       }
 
-      // Storage stats
+      // Storage stats - try proxy first if enabled, fallback to direct
       if (path === '/api/storage/stats' && method === 'GET') {
-        const stats = await repos.storage.getStorageStats();
+        if (USE_STORAGE_WORKER) {
+          try {
+            const queryString = url.search;
+            const response = await proxyToStorageWorker(`/api/storage/stats${queryString}`, 'GET', null, origin);
+            await pool.end();
+            return response;
+          } catch (proxyError) {
+            console.log('Storage stats proxy failed, falling back to direct:', proxyError);
+          }
+        }
+        
+        // Fallback to direct query
+        const days = parseInt(url.searchParams.get('days') || '30', 10);
+        const stats = await repos.storage.getStorageStats(days);
         await pool.end();
         return jsonResponse({ success: true, data: stats }, 200, true, origin);
       }
 
-      // Assign pickup driver
+      // Assign pickup driver - try proxy first if enabled, fallback to direct
       const assignPickupMatch = path.match(/^\/api\/storage\/([^/]+)\/assign-pickup$/);
       if (assignPickupMatch && method === 'POST') {
         const storageId = assignPickupMatch[1];
@@ -400,6 +484,22 @@ const worker: ExportedHandler<Env> = {
           return errorResponse('driverId is required', 'MISSING_DRIVER_ID', 400);
         }
 
+        if (USE_STORAGE_WORKER) {
+          try {
+            const response = await proxyToStorageWorker(
+              `/api/storage/${storageId}/assign-pickup`, 
+              'POST', 
+              body, 
+              origin
+            );
+            await pool.end();
+            return response;
+          } catch (proxyError) {
+            console.log('Assign pickup proxy failed, falling back to direct:', proxyError);
+          }
+        }
+        
+        // Fallback to direct query
         const success = await repos.storage.assignPickupDriver(storageId, body.driverId);
         
         if (!success) {
@@ -411,7 +511,7 @@ const worker: ExportedHandler<Env> = {
         return jsonResponse({ success: true, data: { message: 'Pickup driver assigned' } }, 200, true, origin);
       }
 
-      // Assign delivery driver
+      // Assign delivery driver - try proxy first if enabled, fallback to direct
       const assignDeliveryMatch = path.match(/^\/api\/storage\/([^/]+)\/assign-delivery$/);
       if (assignDeliveryMatch && method === 'POST') {
         const storageId = assignDeliveryMatch[1];
@@ -422,6 +522,22 @@ const worker: ExportedHandler<Env> = {
           return errorResponse('driverId is required', 'MISSING_DRIVER_ID', 400);
         }
 
+        if (USE_STORAGE_WORKER) {
+          try {
+            const response = await proxyToStorageWorker(
+              `/api/storage/${storageId}/assign-delivery`, 
+              'POST', 
+              body, 
+              origin
+            );
+            await pool.end();
+            return response;
+          } catch (proxyError) {
+            console.log('Assign delivery proxy failed, falling back to direct:', proxyError);
+          }
+        }
+        
+        // Fallback to direct query
         const success = await repos.storage.assignDeliveryDriver(storageId, body.driverId);
         
         if (!success) {
@@ -433,11 +549,27 @@ const worker: ExportedHandler<Env> = {
         return jsonResponse({ success: true, data: { message: 'Delivery driver assigned' } }, 200, true, origin);
       }
 
-      // Confirm pickup - mark as picked_up
+      // Confirm pickup - try proxy first if enabled, fallback to direct
       const confirmPickupMatch = path.match(/^\/api\/storage\/([^/]+)\/confirm-pickup$/);
       if (confirmPickupMatch && method === 'POST') {
         const storageId = confirmPickupMatch[1];
+
+        if (USE_STORAGE_WORKER) {
+          try {
+            const response = await proxyToStorageWorker(
+              `/api/storage/${storageId}/confirm-pickup`, 
+              'POST', 
+              {}, 
+              origin
+            );
+            await pool.end();
+            return response;
+          } catch (proxyError) {
+            console.log('Confirm pickup proxy failed, falling back to direct:', proxyError);
+          }
+        }
         
+        // Fallback to direct query
         const success = await repos.storage.confirmPickup(storageId);
         
         if (!success) {
@@ -449,11 +581,27 @@ const worker: ExportedHandler<Env> = {
         return jsonResponse({ success: true, data: { message: 'Pickup confirmed' } }, 200, true, origin);
       }
 
-      // Confirm storage - mark as in_storage
+      // Confirm storage - try proxy first if enabled, fallback to direct
       const confirmStorageMatch = path.match(/^\/api\/storage\/([^/]+)\/confirm-storage$/);
       if (confirmStorageMatch && method === 'POST') {
         const storageId = confirmStorageMatch[1];
+
+        if (USE_STORAGE_WORKER) {
+          try {
+            const response = await proxyToStorageWorker(
+              `/api/storage/${storageId}/confirm-storage`, 
+              'POST', 
+              {}, 
+              origin
+            );
+            await pool.end();
+            return response;
+          } catch (proxyError) {
+            console.log('Confirm storage proxy failed, falling back to direct:', proxyError);
+          }
+        }
         
+        // Fallback to direct query
         const success = await repos.storage.confirmStorage(storageId);
         
         if (!success) {
@@ -465,12 +613,10 @@ const worker: ExportedHandler<Env> = {
         return jsonResponse({ success: true, data: { message: 'Storage confirmed' } }, 200, true, origin);
       }
 
-      // Update storage status
+      // Update storage status - try proxy first if enabled, fallback to direct
       const updateStatusMatch = path.match(/^\/api\/storage\/([^/]+)\/status$/);
-      console.log(`[DEBUG STORAGE] Status route check: path=${path}, method=${method}, match=${!!updateStatusMatch}`);
       if (updateStatusMatch && method === 'POST') {
         const storageId = updateStatusMatch[1];
-        console.log(`[DEBUG STORAGE] Status update matched: storageId=${storageId}`);
         const body = await request.json() as { status: string };
         
         if (!body.status) {
@@ -478,6 +624,22 @@ const worker: ExportedHandler<Env> = {
           return errorResponse('status is required', 'MISSING_STATUS', 400);
         }
 
+        if (USE_STORAGE_WORKER) {
+          try {
+            const response = await proxyToStorageWorker(
+              `/api/storage/${storageId}/status`, 
+              'POST', 
+              body, 
+              origin
+            );
+            await pool.end();
+            return response;
+          } catch (proxyError) {
+            console.log('Update status proxy failed, falling back to direct:', proxyError);
+          }
+        }
+        
+        // Fallback to direct query
         const success = await repos.storage.updateStatus(storageId, body.status as any);
         
         if (!success) {
@@ -489,11 +651,27 @@ const worker: ExportedHandler<Env> = {
         return jsonResponse({ success: true, data: { message: 'Status updated' } }, 200, true, origin);
       }
 
-      // Cancel storage order
+      // Cancel storage order - try proxy first if enabled, fallback to direct
       const cancelStorageMatch = path.match(/^\/api\/storage\/([^/]+)\/cancel$/);
       if (cancelStorageMatch && method === 'POST') {
         const storageId = cancelStorageMatch[1];
+
+        if (USE_STORAGE_WORKER) {
+          try {
+            const response = await proxyToStorageWorker(
+              `/api/storage/${storageId}/cancel`, 
+              'POST', 
+              {}, 
+              origin
+            );
+            await pool.end();
+            return response;
+          } catch (proxyError) {
+            console.log('Cancel storage proxy failed, falling back to direct:', proxyError);
+          }
+        }
         
+        // Fallback to direct query
         const success = await repos.storage.cancel(storageId);
         
         if (!success) {

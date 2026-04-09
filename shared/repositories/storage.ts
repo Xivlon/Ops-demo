@@ -20,9 +20,25 @@ export class StorageRepository extends BaseRepository {
     return this.queryOne<Storage>(sql, [id]);
   }
 
+  // Validate and sanitize days parameter
+  private sanitizeDays(days: number): number {
+    const parsed = Math.max(1, Math.min(365, Math.floor(days))); // Clamp between 1-365 days
+    return parsed;
+  }
+
+  // Validate and sanitize limit parameter
+  private sanitizeLimit(limit: number): number {
+    const parsed = Math.max(1, Math.min(1000, Math.floor(limit))); // Clamp between 1-1000
+    return parsed;
+  }
+
   async list(params: ListStorageParams = {}): Promise<Storage[]> {
-    const { status, limit = 100, days = 30 } = params;
+    const { status } = params;
+    const limit = this.sanitizeLimit(params.limit ?? 100);
+    const days = this.sanitizeDays(params.days ?? 30);
     
+    // Use parameterized interval to prevent SQL injection
+    // (days || ' days')::INTERVAL safely constructs the interval from parameter
     let sql = `
       SELECT s.*, 
         CONCAT(pd.first_name, ' ', pd.last_name) as pickup_driver_name,
@@ -30,11 +46,11 @@ export class StorageRepository extends BaseRepository {
       FROM storage s
       LEFT JOIN driver_profiles pd ON s.pickup_driver_id = pd.id
       LEFT JOIN driver_profiles dd ON s.delivery_driver_id = dd.id
-      WHERE s.created_at > NOW() - INTERVAL '${days} days'
+      WHERE s.created_at > NOW() - ($1 || ' days')::INTERVAL
     `;
     
-    const queryParams: (string | number)[] = [];
-    let paramIndex = 1;
+    const queryParams: (string | number)[] = [days.toString()];
+    let paramIndex = 2;
 
     if (status) {
       sql += ` AND s.status = $${paramIndex}`;
@@ -124,7 +140,7 @@ export class StorageRepository extends BaseRepository {
         WHERE id = $2
         RETURNING id
       `;
-      const result = await this.query<{ id: number }>(findEnumSql, [status, id]);
+      const result = await this.query<{ id: string }>(findEnumSql, [status, id]);
       return result.length > 0;
     } catch (e) {
       return false;
@@ -132,19 +148,19 @@ export class StorageRepository extends BaseRepository {
   }
 
   async getStorageStats(days = 30): Promise<StorageStats> {
+    const sanitizedDays = this.sanitizeDays(days);
+    
     try {
-      // First, get status counts using GROUP BY to avoid hardcoding enum values
+      // Use parameterized interval to prevent SQL injection
       const statusCountsSql = `
         SELECT 
           status::text as status,
           COUNT(*) as count
         FROM storage 
-        WHERE created_at > NOW() - INTERVAL '${days} days'
+        WHERE created_at > NOW() - ($1 || ' days')::INTERVAL
         GROUP BY status
       `;
-      const statusRows = await this.query<{ status: string; count: string }>(statusCountsSql);
-      
-      console.log(`[DEBUG STATS] Raw status rows: ${JSON.stringify(statusRows)}`);
+      const statusRows = await this.query<{ status: string; count: string }>(statusCountsSql, [sanitizedDays.toString()]);
       
       // Initialize all stats to 0
       const stats: StorageStats = {
@@ -162,47 +178,33 @@ export class StorageRepository extends BaseRepository {
       for (const row of statusRows) {
         // Skip null/undefined statuses
         if (!row.status) {
-          console.log(`[DEBUG STATS] Skipping null status row`);
           continue;
         }
         
         const status = row.status.toLowerCase();
         const count = parseInt(row.count, 10);
         
-        console.log(`[DEBUG STATS] Processing status='${status}', count=${count}`);
-        
         // Map various possible status names to our canonical names
         // pending_pickup counts as pending
         if (status === 'pending' || status === 'pending_pickup') {
           stats.pending += count;
-          console.log(`[DEBUG STATS] -> Mapped to pending`);
         }
         else if (status === 'picked_up' || status === 'pickedup') {
           stats.picked_up += count;
-          console.log(`[DEBUG STATS] -> Mapped to picked_up`);
         }
         else if (status === 'in_storage' || status === 'instorage') {
           stats.in_storage += count;
-          console.log(`[DEBUG STATS] -> Mapped to in_storage`);
         }
         else if (status === 'ready_for_delivery' || status === 'readyfordelivery' || status === 'ready') {
           stats.ready_for_delivery += count;
-          console.log(`[DEBUG STATS] -> Mapped to ready_for_delivery`);
         }
         else if (status === 'delivered' || status === 'completed') {
           stats.delivered += count;
-          console.log(`[DEBUG STATS] -> Mapped to delivered`);
         }
         else if (status === 'cancelled' || status === 'canceled') {
           stats.cancelled += count;
-          console.log(`[DEBUG STATS] -> Mapped to cancelled`);
-        }
-        else {
-          console.log(`[DEBUG STATS] -> UNMAPPED status: '${status}'`);
         }
       }
-      
-      console.log(`[DEBUG STATS] Final stats: ${JSON.stringify(stats)}`);
       
       // Get total bags and revenue in separate queries
       const bagsSql = `
@@ -212,19 +214,19 @@ export class StorageRepository extends BaseRepository {
           COALESCE(bag_count_backpack, 0)
         ), 0) as total_bags
         FROM storage 
-        WHERE created_at > NOW() - INTERVAL '${days} days'
+        WHERE created_at > NOW() - ($1 || ' days')::INTERVAL
       `;
-      const bagsResult = await this.queryOne<{ total_bags: string }>(bagsSql);
+      const bagsResult = await this.queryOne<{ total_bags: string }>(bagsSql, [sanitizedDays.toString()]);
       stats.total_bags = parseInt(bagsResult?.total_bags || '0', 10);
       
       // Get revenue from delivered orders only
       const revenueSql = `
         SELECT COALESCE(SUM(total_price_cents), 0) / 100.0 as total_revenue
         FROM storage 
-        WHERE created_at > NOW() - INTERVAL '${days} days'
+        WHERE created_at > NOW() - ($1 || ' days')::INTERVAL
           AND LOWER(status::text) IN ('delivered', 'completed')
       `;
-      const revenueResult = await this.queryOne<{ total_revenue: string }>(revenueSql);
+      const revenueResult = await this.queryOne<{ total_revenue: string }>(revenueSql, [sanitizedDays.toString()]);
       stats.total_revenue = parseFloat(revenueResult?.total_revenue || '0');
       
       return stats;
@@ -235,18 +237,8 @@ export class StorageRepository extends BaseRepository {
   }
 
   async confirmPickup(storageId: string): Promise<boolean> {
-    // First check current status
-    const checkSql = `SELECT status::text as status FROM storage WHERE id = $1`;
-    const current = await this.queryOne<{ status: string }>(checkSql, [storageId]);
-    
-    if (!current) return false;
-    const currentStatus = current.status.toLowerCase();
-    // Accept pending, pending_pickup, or similar pre-pickup statuses
-    if (!['pending', 'pending_pickup', 'booked', 'scheduled'].includes(currentStatus)) {
-      return false;
-    }
-    
-    // Update status to picked_up
+    // Atomic update: status check and update in a single operation
+    // This prevents race conditions where status could change between check and update
     const sql = `
       UPDATE storage 
       SET status = (
@@ -277,23 +269,14 @@ export class StorageRepository extends BaseRepository {
           AND LOWER(status::text) IN ('pending', 'pending_pickup', 'booked', 'scheduled')
         RETURNING id
       `;
-      const result = await this.query<{ id: number }>(fallbackSql, [storageId]);
+      const result = await this.query<{ id: string }>(fallbackSql, [storageId]);
       return result.length > 0;
     }
   }
 
   async confirmStorage(storageId: string): Promise<boolean> {
-    // First check current status
-    const checkSql = `SELECT status::text as status FROM storage WHERE id = $1`;
-    const current = await this.queryOne<{ status: string }>(checkSql, [storageId]);
-    
-    if (!current) return false;
-    const currentStatus = current.status.toLowerCase();
-    if (!['picked_up', 'pickedup', 'collected'].includes(currentStatus)) {
-      return false;
-    }
-    
-    // Update status to in_storage
+    // Atomic update: status check and update in a single operation
+    // This prevents race conditions where status could change between check and update
     const sql = `
       UPDATE storage 
       SET status = (
@@ -322,25 +305,14 @@ export class StorageRepository extends BaseRepository {
           AND LOWER(status::text) IN ('picked_up', 'pickedup', 'collected')
         RETURNING id
       `;
-      const result = await this.query<{ id: number }>(fallbackSql, [storageId]);
+      const result = await this.query<{ id: string }>(fallbackSql, [storageId]);
       return result.length > 0;
     }
   }
 
   async cancel(storageId: string): Promise<boolean> {
-    // First check current status by querying
-    const checkSql = `SELECT status::text as status FROM storage WHERE id = $1`;
-    const current = await this.queryOne<{ status: string }>(checkSql, [storageId]);
-    
-    // Don't cancel if already delivered or cancelled
-    if (!current) return false;
-    const currentStatus = current.status.toLowerCase();
-    if (currentStatus === 'delivered' || currentStatus === 'completed' || currentStatus === 'cancelled' || currentStatus === 'canceled') {
-      return false;
-    }
-    
-    // Try to update - we'll construct a dynamic SQL that casts the string to the enum
-    // This works because PostgreSQL will try to cast the string to the enum type
+    // Atomic update: status check (NOT IN final statuses) and update in a single operation
+    // This prevents race conditions where status could change between check and update
     const sql = `
       UPDATE storage 
       SET status = $2::text::storage_status,
@@ -354,7 +326,7 @@ export class StorageRepository extends BaseRepository {
     const cancelVariants = ['cancelled', 'canceled', 'CANCELLED', 'CANCELED'];
     for (const variant of cancelVariants) {
       try {
-        const result = await this.query<{ id: number }>(sql, [storageId, variant]);
+        const result = await this.query<{ id: string }>(sql, [storageId, variant]);
         if (result.length > 0) return true;
       } catch (e) {
         // Try next variant
