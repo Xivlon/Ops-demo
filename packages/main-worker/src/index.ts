@@ -108,7 +108,8 @@ async function proxyToStorageWorker(
   endpoint: string, 
   method: string, 
   body: unknown | null, 
-  origin: string | null
+  origin: string | null,
+  request: Request
 ): Promise<Response> {
   if (!USE_STORAGE_WORKER) {
     throw new Error('Storage worker not enabled');
@@ -121,12 +122,19 @@ async function proxyToStorageWorker(
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), STORAGE_TIMEOUT_MS);
     
+    // Forward Cookie header for JWT authentication
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    const cookie = request.headers.get('Cookie');
+    if (cookie) {
+      headers['Cookie'] = cookie;
+    }
+    
     const fetchOptions: RequestInit = {
       method,
       signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
     };
     
     if (body && method !== 'GET') {
@@ -431,7 +439,7 @@ const worker: ExportedHandler<Env> = {
         if (USE_STORAGE_WORKER) {
           try {
             const queryString = url.search;
-            const response = await proxyToStorageWorker(`/api/storage${queryString}`, 'GET', null, origin);
+            const response = await proxyToStorageWorker(`/api/storage${queryString}`, 'GET', null, origin, request);
             await pool.end();
             return response;
           } catch (proxyError) {
@@ -458,7 +466,7 @@ const worker: ExportedHandler<Env> = {
         if (USE_STORAGE_WORKER) {
           try {
             const queryString = url.search;
-            const response = await proxyToStorageWorker(`/api/storage/stats${queryString}`, 'GET', null, origin);
+            const response = await proxyToStorageWorker(`/api/storage/stats${queryString}`, 'GET', null, origin, request);
             await pool.end();
             return response;
           } catch (proxyError) {
@@ -490,7 +498,8 @@ const worker: ExportedHandler<Env> = {
               `/api/storage/${storageId}/assign-pickup`, 
               'POST', 
               body, 
-              origin
+              origin,
+              request
             );
             await pool.end();
             return response;
@@ -528,7 +537,8 @@ const worker: ExportedHandler<Env> = {
               `/api/storage/${storageId}/assign-delivery`, 
               'POST', 
               body, 
-              origin
+              origin,
+              request
             );
             await pool.end();
             return response;
@@ -560,7 +570,8 @@ const worker: ExportedHandler<Env> = {
               `/api/storage/${storageId}/confirm-pickup`, 
               'POST', 
               {}, 
-              origin
+              origin,
+              request
             );
             await pool.end();
             return response;
@@ -592,7 +603,8 @@ const worker: ExportedHandler<Env> = {
               `/api/storage/${storageId}/confirm-storage`, 
               'POST', 
               {}, 
-              origin
+              origin,
+              request
             );
             await pool.end();
             return response;
@@ -630,7 +642,8 @@ const worker: ExportedHandler<Env> = {
               `/api/storage/${storageId}/status`, 
               'POST', 
               body, 
-              origin
+              origin,
+              request
             );
             await pool.end();
             return response;
@@ -662,7 +675,8 @@ const worker: ExportedHandler<Env> = {
               `/api/storage/${storageId}/cancel`, 
               'POST', 
               {}, 
-              origin
+              origin,
+              request
             );
             await pool.end();
             return response;
