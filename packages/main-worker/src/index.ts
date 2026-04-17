@@ -757,6 +757,33 @@ const worker: ExportedHandler<Env> = {
         return jsonResponse({ success: true, data: earnings, meta: { period, count: earnings.length } }, 200, true, origin);
       }
 
+      // Get combined earnings breakdown (transport + storage) by month/quarter/year
+      if (path === '/api/reports/earnings-breakdown' && method === 'GET') {
+        const type = url.searchParams.get('type') || 'monthly';
+        
+        if (!['monthly', 'quarterly', 'yearly'].includes(type)) {
+          await pool.end();
+          return errorResponse('Invalid type. Use: monthly, quarterly, yearly', 'INVALID_TYPE', 400);
+        }
+        
+        const breakdown = await repos.reports.getEarningsBreakdown(type as 'monthly' | 'quarterly' | 'yearly');
+        
+        await pool.end();
+        return jsonResponse({ 
+          success: true, 
+          data: breakdown, 
+          meta: { type, count: breakdown.length },
+          totals: {
+            totalStorageRevenue: breakdown.reduce((sum, r) => sum + r.storageRevenue, 0),
+            totalTransportRevenue: breakdown.reduce((sum, r) => sum + r.transportRevenue, 0),
+            totalRevenue: breakdown.reduce((sum, r) => sum + r.totalRevenue, 0),
+            totalStorageOrders: breakdown.reduce((sum, r) => sum + r.storageOrders, 0),
+            totalTransportOrders: breakdown.reduce((sum, r) => sum + r.transportOrders, 0),
+            totalOrders: breakdown.reduce((sum, r) => sum + r.totalOrders, 0)
+          }
+        }, 200, true, origin);
+      }
+
       // Export storage orders as CSV
       if (path === '/api/export/storage-orders.csv' && method === 'GET') {
         const days = parseInt(url.searchParams.get('days') || '30', 10);
@@ -829,6 +856,60 @@ const worker: ExportedHandler<Env> = {
             'Access-Control-Allow-Origin': origin || '*',
           }
         });
+      }
+
+      // Export storage orders as JSON (for XLSX generation)
+      if (path === '/api/export/storage-orders.json' && method === 'GET') {
+        const days = parseInt(url.searchParams.get('days') || '30', 10);
+        const endDate = new Date().toISOString();
+        const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+        
+        const orders = await repos.reports.getStorageOrdersForExport(startDate, endDate);
+        
+        // Format for export
+        const formattedOrders = orders.map(o => ({
+          'ID': o.id,
+          'Created At': o.created_at,
+          'Status': o.status,
+          'Customer Name': o.customer_name || '',
+          'Customer Email': o.customer_email || '',
+          'Customer Phone': o.customer_phone || '',
+          'Price': parseFloat(o.price || 0),
+          'Storage Days': o.storage_days,
+          'Total Bags': o.total_bags,
+          'Pickup Driver': o.pickup_driver || '',
+          'Picked Up At': o.picked_up_at || ''
+        }));
+        
+        await pool.end();
+        return jsonResponse({ success: true, data: formattedOrders, count: formattedOrders.length }, 200, true, origin);
+      }
+
+      // Export transport orders as JSON (for XLSX generation)
+      if (path === '/api/export/transport-orders.json' && method === 'GET') {
+        const days = parseInt(url.searchParams.get('days') || '30', 10);
+        const endDate = new Date().toISOString();
+        const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+        
+        const orders = await repos.reports.getTransportOrdersForExport(startDate, endDate);
+        
+        // Format for export
+        const formattedOrders = orders.map(o => ({
+          'ID': o.id,
+          'Created At': o.created_at,
+          'Status': o.status,
+          'Customer Name': o.customer_name || '',
+          'Customer Email': o.customer_email || '',
+          'Customer Phone': o.customer_phone || '',
+          'Price': parseFloat(o.price || 0),
+          'Origin': o.origin_airport || '',
+          'Destination': o.destination_airport || '',
+          'Driver': o.driver || '',
+          'Delivered At': o.delivered_at || ''
+        }));
+        
+        await pool.end();
+        return jsonResponse({ success: true, data: formattedOrders, count: formattedOrders.length }, 200, true, origin);
       }
 
       // Legacy query endpoint

@@ -402,6 +402,7 @@
         // Count cancelled orders
         const cancelledCount = allShipments.filter(s => s.status === 'CANCELLED').length;
         
+        const revenue = parseFloat(data.total_revenue || 0).toFixed(2);
         grid.innerHTML = 
             makeCard('Pending', pendingCount, 'yellow', 'PENDING') +
             makeCard('Assigned', assignedCount, 'blue', 'ASSIGNED') +
@@ -410,6 +411,7 @@
             makeCard('Cancelled', cancelledCount, 'red', 'CANCELLED') +
             makeCard('Failed', failedCount, 'slate', 'FAILED') +
             makeCard('Urgent', urgentCount, 'orange', 'URGENT') +
+            makeCard('Revenue', '$' + revenue, 'emerald', null, false) +
             makeCard('Active Drivers', (data.online_drivers || 0) + '/' + (data.total_drivers || 0), 'cyan', null, true);
     }
 

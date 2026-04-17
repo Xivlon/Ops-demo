@@ -196,4 +196,108 @@ export class ReportsRepository extends BaseRepository {
     `;
     return this.query(sql, [startDate, endDate]);
   }
+
+  // Get combined earnings breakdown by month/quarter/year
+  async getEarningsBreakdown(periodType: 'monthly' | 'quarterly' | 'yearly'): Promise<any[]> {
+    let dateTrunc: string;
+    let dateFormat: string;
+    let limit: number;
+    
+    switch (periodType) {
+      case 'monthly':
+        dateTrunc = 'month';
+        dateFormat = 'YYYY-MM';
+        limit = 12; // Last 12 months
+        break;
+      case 'quarterly':
+        dateTrunc = 'quarter';
+        dateFormat = 'YYYY-Q';
+        limit = 8; // Last 8 quarters
+        break;
+      case 'yearly':
+        dateTrunc = 'year';
+        dateFormat = 'YYYY';
+        limit = 5; // Last 5 years
+        break;
+    }
+
+    // Storage earnings by period (dropoff confirmed = not pending_dropoff)
+    const storageSql = `
+      SELECT 
+        TO_CHAR(DATE_TRUNC('${dateTrunc}', created_at), '${dateFormat}') as period,
+        COALESCE(SUM(price_cents), 0) / 100.0 as revenue,
+        COUNT(*) as order_count
+      FROM storage 
+      WHERE created_at > NOW() - INTERVAL '${limit} ${dateTrunc}s'
+        AND status != 'PENDING_DROPOFF'
+      GROUP BY DATE_TRUNC('${dateTrunc}', created_at)
+      ORDER BY DATE_TRUNC('${dateTrunc}', created_at) DESC
+    `;
+
+    // Transport earnings by period (delivered shipments)
+    const transportSql = `
+      SELECT 
+        TO_CHAR(DATE_TRUNC('${dateTrunc}', created_at), '${dateFormat}') as period,
+        COALESCE(SUM(price_cents), 0) / 100.0 as revenue,
+        COUNT(*) as order_count
+      FROM shipments 
+      WHERE created_at > NOW() - INTERVAL '${limit} ${dateTrunc}s'
+        AND status = 'DELIVERED'
+      GROUP BY DATE_TRUNC('${dateTrunc}', created_at)
+      ORDER BY DATE_TRUNC('${dateTrunc}', created_at) DESC
+    `;
+
+    const [storageRows, transportRows] = await Promise.all([
+      this.query<{ period: string; revenue: string; order_count: string }>(storageSql),
+      this.query<{ period: string; revenue: string; order_count: string }>(transportSql)
+    ]);
+
+    // Combine into a map
+    const earningsMap = new Map<string, {
+      period: string;
+      storageRevenue: number;
+      storageOrders: number;
+      transportRevenue: number;
+      transportOrders: number;
+      totalRevenue: number;
+      totalOrders: number;
+    }>();
+
+    // Add storage earnings
+    storageRows.forEach(row => {
+      earningsMap.set(row.period, {
+        period: row.period,
+        storageRevenue: parseFloat(row.revenue),
+        storageOrders: parseInt(row.order_count, 10),
+        transportRevenue: 0,
+        transportOrders: 0,
+        totalRevenue: parseFloat(row.revenue),
+        totalOrders: parseInt(row.order_count, 10)
+      });
+    });
+
+    // Add transport earnings
+    transportRows.forEach(row => {
+      const existing = earningsMap.get(row.period);
+      if (existing) {
+        existing.transportRevenue = parseFloat(row.revenue);
+        existing.transportOrders = parseInt(row.order_count, 10);
+        existing.totalRevenue += parseFloat(row.revenue);
+        existing.totalOrders += parseInt(row.order_count, 10);
+      } else {
+        earningsMap.set(row.period, {
+          period: row.period,
+          storageRevenue: 0,
+          storageOrders: 0,
+          transportRevenue: parseFloat(row.revenue),
+          transportOrders: parseInt(row.order_count, 10),
+          totalRevenue: parseFloat(row.revenue),
+          totalOrders: parseInt(row.count, 10)
+        });
+      }
+    });
+
+    // Convert to array and sort by period descending
+    return Array.from(earningsMap.values()).sort((a, b) => b.period.localeCompare(a.period));
+  }
 }
