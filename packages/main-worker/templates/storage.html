@@ -256,13 +256,16 @@
                 Bags
               </th>
               <th class="px-5 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                Price
+              </th>
+              <th class="px-5 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
                 Actions
               </th>
             </tr>
           </thead>
           <tbody id="table-body" class="bg-slate-800 divide-y divide-slate-700 text-sm">
             <tr>
-                <td colspan="9" class="px-6 py-12 text-center text-slate-500">
+                <td colspan="10" class="px-6 py-12 text-center text-slate-500">
                     <div class="flex flex-col items-center justify-center gap-2">
                         <i data-lucide="loader-2" class="animate-spin w-8 h-8 text-green-500"></i>
                         <span>Loading storage data...</span>
@@ -645,7 +648,7 @@
         }
 
         if (list.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="9" class="px-6 py-12 text-center text-slate-500 italic">No storage orders found.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="10" class="px-6 py-12 text-center text-slate-500 italic">No storage orders found.</td></tr>';
             return;
         }
 
@@ -716,16 +719,18 @@
                 </div>
             `;
             
-            // Bag counts + value
+            // Bag counts
             const bagCount = getTotalBags(s);
-            const bagValue = s.total_price_cents || s.price_cents || 0;
             const bagHtml = `
                 <div class="flex flex-col gap-0.5">
                     <div class="text-sm font-medium text-slate-300">${bagCount} bags</div>
                     <div class="text-xs text-slate-400">${formatBagCounts(s)}</div>
-                    <div class="text-xs font-bold text-emerald-400">${formatPrice(bagValue)}</div>
                 </div>
             `;
+            
+            // Price
+            const bagValue = s.price_cents || 0;
+            const priceHtml = `<div class="text-base font-black text-emerald-400">${formatPrice(bagValue)}</div>`;
             
             // Created date
             const d = new Date(s.created_at);
@@ -785,6 +790,7 @@
                 <td class="px-5 py-5 whitespace-nowrap">${storagePeriodHtml}</td>
                 <td class="px-5 py-5 whitespace-nowrap">${customerInfoHtml}</td>
                 <td class="px-5 py-5 whitespace-nowrap">${bagHtml}</td>
+                <td class="px-5 py-5 whitespace-nowrap">${priceHtml}</td>
                 <td class="px-5 py-5 whitespace-nowrap">${actionsHtml}</td>
             </tr>`;
         }).join('');
