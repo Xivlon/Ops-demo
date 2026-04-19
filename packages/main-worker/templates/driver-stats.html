@@ -830,6 +830,18 @@
         }
     }
 
+    // Status color mapping for Excel cells
+    function getStatusStyle(status) {
+        const map = {
+            'PENDING':    { fill: { fgColor: { rgb: 'FEF3C7' }, patternType: 'solid' }, font: { color: { rgb: '92400E' }, bold: true, sz: 10 } },
+            'ASSIGNED':   { fill: { fgColor: { rgb: 'DBEAFE' }, patternType: 'solid' }, font: { color: { rgb: '1E40AF' }, bold: true, sz: 10 } },
+            'IN_TRANSIT': { fill: { fgColor: { rgb: 'EDE9FE' }, patternType: 'solid' }, font: { color: { rgb: '5B21B6' }, bold: true, sz: 10 } },
+            'DELIVERED':  { fill: { fgColor: { rgb: 'DCFCE7' }, patternType: 'solid' }, font: { color: { rgb: '166534' }, bold: true, sz: 10 } },
+            'CANCELLED':  { fill: { fgColor: { rgb: 'FEE2E2' }, patternType: 'solid' }, font: { color: { rgb: '991B1B' }, bold: true, sz: 10 } },
+        };
+        return map[status] || { font: { sz: 10 } };
+    }
+
     async function downloadOrders(type, format = 'csv') {
         const period = document.getElementById('export-period').value;
         const days = period === 'weekly' ? 7 : period === 'monthly' ? 30 : period === 'quarterly' ? 90 : 365;
@@ -851,11 +863,84 @@
             }
             
             if (format === 'xlsx') {
-                // Create XLSX
                 const ws = XLSX.utils.json_to_sheet(orders);
                 const wb = XLSX.utils.book_new();
                 const sheetName = type === 'storage-orders' ? 'Storage Orders' : 'Transport Orders';
                 XLSX.utils.book_append_sheet(wb, ws, sheetName);
+                
+                const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+                const isStorage = type === 'storage-orders';
+                
+                // Column widths tailored to each sheet type
+                ws['!cols'] = isStorage
+                    ? [
+                        { wch: 24 }, { wch: 20 }, { wch: 14 }, { wch: 22 }, { wch: 30 },
+                        { wch: 16 }, { wch: 12 }, { wch: 13 }, { wch: 12 }, { wch: 22 }, { wch: 20 }
+                      ]
+                    : [
+                        { wch: 24 }, { wch: 20 }, { wch: 14 }, { wch: 22 }, { wch: 30 },
+                        { wch: 16 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 22 }, { wch: 20 }
+                      ];
+                
+                // Style data rows
+                for (let row = range.s.r + 1; row <= range.e.r; row++) {
+                    const isEven = row % 2 === 0;
+                    
+                    for (let col = range.s.c; col <= range.e.c; col++) {
+                        const cellRef = XLSX.utils.encode_cell({ r: row, c: col });
+                        if (!ws[cellRef]) continue;
+                        
+                        const headerRef = XLSX.utils.encode_cell({ r: range.s.r, c: col });
+                        const headerName = ws[headerRef]?.v || '';
+                        
+                        // Base style
+                        const style = { font: { name: 'Segoe UI', sz: 10 } };
+                        
+                        // Alternating row striping (subtle slate-50)
+                        if (isEven) {
+                            style.fill = { fgColor: { rgb: 'F8FAFC' }, patternType: 'solid' };
+                        }
+                        
+                        // Status column — colored badge
+                        if (headerName === 'Status') {
+                            const statusStyle = getStatusStyle(ws[cellRef].v);
+                            Object.assign(style, statusStyle);
+                            style.alignment = { horizontal: 'center', vertical: 'center' };
+                        }
+                        
+                        // Price — currency format, right aligned
+                        if (headerName === 'Price') {
+                            style.alignment = { horizontal: 'right', vertical: 'center' };
+                            style.numFmt = '$#,##0.00';
+                        }
+                        
+                        // Numeric counters — right aligned
+                        if (['Storage Days', 'Total Bags', 'Transport Orders', 'Storage Orders', 'Total Orders'].includes(headerName)) {
+                            style.alignment = { horizontal: 'right', vertical: 'center' };
+                            style.numFmt = '#,##0';
+                        }
+                        
+                        // Percentage columns
+                        if (['Success Rate', 'Cancel Rate'].includes(headerName)) {
+                            style.alignment = { horizontal: 'right', vertical: 'center' };
+                            style.numFmt = '0.0%';
+                        }
+                        
+                        // Date columns — ISO-like format
+                        if (['Created At', 'Picked Up At', 'Delivered At'].includes(headerName)) {
+                            style.alignment = { horizontal: 'left', vertical: 'center' };
+                            style.numFmt = 'yyyy-mm-dd hh:mm';
+                        }
+                        
+                        // Email — left aligned
+                        if (['Customer Email', 'Email'].includes(headerName)) {
+                            style.alignment = { horizontal: 'left', vertical: 'center' };
+                        }
+                        
+                        ws[cellRef].s = style;
+                    }
+                }
+                
                 writeThemedXLSX(wb, `${type}-${new Date().toISOString().split('T')[0]}.xlsx`);
             } else {
                 // CSV format - convert JSON to CSV
