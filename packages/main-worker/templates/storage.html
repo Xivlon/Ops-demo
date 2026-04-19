@@ -770,7 +770,7 @@
 
             
             // Cancel button for active orders (not delivered or already cancelled)
-            if (['pending', 'in_storage', 'ready_for_delivery'].includes(effectiveStatus)) {
+            if (['pending_dropoff', 'pending_pickup'].includes(effectiveStatus)) {
                 actionButtons.push(`<button onclick="event.stopPropagation(); cancelOrder('${s.id}', '${escapeHtml(s.customer_name || 'Order')}');" class="bg-red-600/80 hover:bg-red-500 text-white px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-1.5" title="Cancel Order">
                     <i data-lucide="x-circle" class="w-3.5 h-3.5"></i>Cancel
                 </button>`);
@@ -779,7 +779,7 @@
             let actionsHtml = '';
             if (actionButtons.length > 0) {
                 actionsHtml = `<div class="flex flex-col gap-2">${actionButtons.join('')}</div>`;
-            } else if (s.status === 'cancelled') {
+            } else if (effectiveStatus === 'cancelled') {
                 actionsHtml = '<span class="text-slate-500 text-xs italic flex items-center gap-1"><i data-lucide="ban" class="w-3 h-3"></i>Cancelled</span>';
             } else {
                 actionsHtml = '<span class="text-slate-600 text-xs">-</span>';

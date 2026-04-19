@@ -28,8 +28,45 @@ export class ReportsRepository extends BaseRepository {
     super(pool);
   }
 
+  // Get calendar-based period boundaries
+  getPeriodRange(period: 'weekly' | 'monthly' | 'quarterly' | 'annual'): { startDate: string; endDate: string; label: string } {
+    const now = new Date();
+    const endDate = now.toISOString();
+    let start: Date;
+    let label: string;
+
+    switch (period) {
+      case 'weekly': {
+        // Current week, starting Monday (UTC)
+        const day = now.getUTCDay(); // 0=Sun, 1=Mon...
+        const mondayOffset = day === 0 ? 6 : day - 1;
+        start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - mondayOffset, 0, 0, 0, 0));
+        label = 'This Week';
+        break;
+      }
+      case 'monthly': {
+        start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0));
+        label = 'This Month';
+        break;
+      }
+      case 'quarterly': {
+        const quarter = Math.floor(now.getUTCMonth() / 3);
+        start = new Date(Date.UTC(now.getUTCFullYear(), quarter * 3, 1, 0, 0, 0, 0));
+        label = `Q${quarter + 1} ${now.getUTCFullYear()}`;
+        break;
+      }
+      case 'annual': {
+        start = new Date(Date.UTC(now.getUTCFullYear(), 0, 1, 0, 0, 0, 0));
+        label = `${now.getUTCFullYear()}`;
+        break;
+      }
+    }
+
+    return { startDate: start.toISOString(), endDate, label };
+  }
+
   // Get revenue report for a date range
-  async getRevenueReport(startDate: string, endDate: string): Promise<RevenueReport> {
+  async getRevenueReport(startDate: string, endDate: string, periodLabel?: string): Promise<RevenueReport> {
     // Storage revenue (price_cents from storage orders where dropoff confirmed)
     const storageSql = `
       SELECT 
@@ -63,7 +100,7 @@ export class ReportsRepository extends BaseRepository {
     const transportOrders = parseInt(transportResult?.order_count || '0', 10);
 
     return {
-      period: `${startDate} to ${endDate}`,
+      period: periodLabel || `${startDate} to ${endDate}`,
       startDate,
       endDate,
       storageRevenue,
@@ -121,32 +158,28 @@ export class ReportsRepository extends BaseRepository {
     }));
   }
 
-  // Get weekly revenue breakdown
+  // Get weekly revenue breakdown (current calendar week, Mon-Sun UTC)
   async getWeeklyReport(): Promise<RevenueReport> {
-    const endDate = new Date().toISOString();
-    const startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    return this.getRevenueReport(startDate, endDate);
+    const { startDate, endDate, label } = this.getPeriodRange('weekly');
+    return this.getRevenueReport(startDate, endDate, label);
   }
 
-  // Get monthly revenue breakdown
+  // Get monthly revenue breakdown (current calendar month)
   async getMonthlyReport(): Promise<RevenueReport> {
-    const endDate = new Date().toISOString();
-    const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-    return this.getRevenueReport(startDate, endDate);
+    const { startDate, endDate, label } = this.getPeriodRange('monthly');
+    return this.getRevenueReport(startDate, endDate, label);
   }
 
-  // Get quarterly revenue breakdown
+  // Get quarterly revenue breakdown (current calendar quarter)
   async getQuarterlyReport(): Promise<RevenueReport> {
-    const endDate = new Date().toISOString();
-    const startDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
-    return this.getRevenueReport(startDate, endDate);
+    const { startDate, endDate, label } = this.getPeriodRange('quarterly');
+    return this.getRevenueReport(startDate, endDate, label);
   }
 
-  // Get annual revenue breakdown
+  // Get annual revenue breakdown (current calendar year)
   async getAnnualReport(): Promise<RevenueReport> {
-    const endDate = new Date().toISOString();
-    const startDate = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString();
-    return this.getRevenueReport(startDate, endDate);
+    const { startDate, endDate, label } = this.getPeriodRange('annual');
+    return this.getRevenueReport(startDate, endDate, label);
   }
 
   // Get detailed storage orders for export
@@ -292,7 +325,7 @@ export class ReportsRepository extends BaseRepository {
           transportRevenue: parseFloat(row.revenue),
           transportOrders: parseInt(row.order_count, 10),
           totalRevenue: parseFloat(row.revenue),
-          totalOrders: parseInt(row.count, 10)
+          totalOrders: parseInt(row.order_count, 10)
         });
       }
     });

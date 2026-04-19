@@ -22,6 +22,7 @@ export interface ApiResponse<T = unknown> {
   error?: string;
   code?: string;
   meta?: Record<string, unknown>;
+  [key: string]: unknown;
 }
 
 // Shipment types - matching Neon schema

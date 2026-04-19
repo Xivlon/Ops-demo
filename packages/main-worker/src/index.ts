@@ -729,32 +729,18 @@ const worker: ExportedHandler<Env> = {
       // Driver earnings report
       if (path === '/api/reports/driver-earnings' && method === 'GET') {
         const period = url.searchParams.get('period') || 'monthly';
-        let startDate, endDate;
         
-        const now = new Date();
-        switch (period) {
-          case 'weekly':
-            startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
-            break;
-          case 'monthly':
-            startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
-            break;
-          case 'quarterly':
-            startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString();
-            break;
-          case 'annual':
-            startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000).toISOString();
-            break;
-          default:
-            await pool.end();
-            return errorResponse('Invalid period. Use: weekly, monthly, quarterly, annual', 'INVALID_PERIOD', 400);
+        if (!['weekly', 'monthly', 'quarterly', 'annual'].includes(period)) {
+          await pool.end();
+          return errorResponse('Invalid period. Use: weekly, monthly, quarterly, annual', 'INVALID_PERIOD', 400);
         }
-        endDate = now.toISOString();
+        
+        const { startDate, endDate, label } = repos.reports.getPeriodRange(period as 'weekly' | 'monthly' | 'quarterly' | 'annual');
         
         const earnings = await repos.reports.getDriverEarnings(startDate, endDate);
         
         await pool.end();
-        return jsonResponse({ success: true, data: earnings, meta: { period, count: earnings.length } }, 200, true, origin);
+        return jsonResponse({ success: true, data: earnings, meta: { period, label, count: earnings.length } }, 200, true, origin);
       }
 
       // Get combined earnings breakdown (transport + storage) by month/quarter/year
