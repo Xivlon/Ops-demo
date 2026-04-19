@@ -575,6 +575,8 @@
         // Normalize database enum to frontend status
         const normalizeDbStatus = (dbStatus) => {
             if (!dbStatus) return 'cancelled';
+            const status = dbStatus.toUpperCase();
+            if (status.includes('CANCEL')) return 'cancelled';
             const mapping = {
                 'PENDING_DROPOFF': 'pending_dropoff',
                 'DROPPED_OFF': 'dropped_off',
@@ -584,7 +586,7 @@
                 'PICKUP_CONFIRMED': 'pickup_confirmed',
                 'DELIVERED': 'delivered'
             };
-            return mapping[dbStatus.toUpperCase()] || 'pending_dropoff';
+            return mapping[status] || 'pending_dropoff';
         };
         
         if (statusFilter) {
@@ -695,6 +697,7 @@
             const normalizeStatus = (dbStatus) => {
                 if (!dbStatus) return 'cancelled'; // null status = cancelled
                 const status = dbStatus.toUpperCase();
+                if (status.includes('CANCEL')) return 'cancelled';
                 const mapping = {
                     'PENDING_DROPOFF': 'pending_dropoff',
                     'PENDING_PICKUP': 'pending_pickup',

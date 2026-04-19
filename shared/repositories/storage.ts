@@ -283,7 +283,7 @@ export class StorageRepository extends BaseRepository {
         SET status = $2,
             updated_at = NOW()
         WHERE id = $1
-          AND status NOT IN ('DELIVERED')
+          AND status NOT IN ('PICKUP_CONFIRMED')
         RETURNING id
       `;
       const result = await this.query<{ id: string }>(sql, [storageId, cancelStatus]);
@@ -295,7 +295,7 @@ export class StorageRepository extends BaseRepository {
         SET status = null,
             updated_at = NOW()
         WHERE id = $1
-          AND status NOT IN ('DELIVERED')
+          AND status NOT IN ('PICKUP_CONFIRMED')
         RETURNING id
       `;
       const result = await this.query<{ id: string }>(sql, [storageId]);
