@@ -249,6 +249,17 @@ const worker: ExportedHandler<Env> = {
         }, 200, true, origin);
       }
 
+      // Get current user role
+      if (path === '/api/me' && method === 'GET') {
+        const role = getRole(request);
+        if (!role) {
+          await pool.end();
+          return unauthorizedResponse();
+        }
+        await pool.end();
+        return jsonResponse({ success: true, data: { role } }, 200, true, origin);
+      }
+
       // Login
       if (path === '/api/login' && method === 'POST') {
         const body = await request.json() as LoginRequest;
@@ -288,9 +299,9 @@ const worker: ExportedHandler<Env> = {
         return response;
       }
 
-      // Dashboard stats (admin only)
+      // Dashboard stats (admin + transport)
       if (path === '/api/dashboard/stats' && method === 'GET') {
-        const roleCheck = requireRole(request, ['admin']);
+        const roleCheck = requireRole(request, ['admin', 'transport']);
         if (roleCheck) { await pool.end(); return roleCheck; }
         
         const stats = await repos.shipments.getDashboardStats();
@@ -1119,7 +1130,7 @@ const worker: ExportedHandler<Env> = {
               if (payload) {
                 // Redirect based on role
                 let redirectPath = '/';
-                if (payload.role === 'transport') redirectPath = '/drivers';
+                if (payload.role === 'transport') redirectPath = '/';
                 if (payload.role === 'storage') redirectPath = '/storage';
                 await pool.end();
                 return new Response(null, { status: 302, headers: { Location: redirectPath } });
@@ -1139,7 +1150,7 @@ const worker: ExportedHandler<Env> = {
       }
 
       if (path === '/' && method === 'GET') {
-        const roleCheck = requireRole(request, ['admin']);
+        const roleCheck = requireRole(request, ['admin', 'transport']);
         if (roleCheck) { await pool.end(); return roleCheck; }
         
         await pool.end(); // Close pool after request
@@ -1147,7 +1158,7 @@ const worker: ExportedHandler<Env> = {
       }
 
       if (path === '/drivers' && method === 'GET') {
-        const roleCheck = requireRole(request, ['admin', 'transport']);
+        const roleCheck = requireRole(request, ['admin']);
         if (roleCheck) { await pool.end(); return roleCheck; }
         
         await pool.end(); // Close pool after request

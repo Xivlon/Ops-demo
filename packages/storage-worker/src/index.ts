@@ -460,11 +460,11 @@ const worker: ExportedHandler<Env> = {
       if (updateMatch && method === 'PUT') {
         const storageId = updateMatch[1];
         
-        // Admin-only check
+        // Admin or storage role check
         const authPayload = await authenticate(request, env);
-        if (authPayload?.role !== 'admin') {
+        if (authPayload?.role !== 'admin' && authPayload?.role !== 'storage') {
           await pool.end();
-          return errorResponse('Admin access required', 'FORBIDDEN', 403, origin);
+          return errorResponse('Admin or storage access required', 'FORBIDDEN', 403, origin);
         }
 
         const body = await request.json() as Record<string, unknown>;
