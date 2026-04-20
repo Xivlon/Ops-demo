@@ -61,7 +61,7 @@
         </div>
       </div>
 
-      <div id="error-message" class="hidden mb-4 p-3 bg-red-900/30 border border-red-500/30 rounded-lg text-red-400 text-sm text-center">
+      <div id="error-message" class="hidden mb-4 p-3 bg-red-900/30 border border-red-500/30 rounded-lg text-red-400 text-sm text-center font-medium">
         Invalid PIN code
       </div>
 
@@ -101,16 +101,28 @@
     document.getElementById('login-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       
-      const pin = document.getElementById('pin-input').value;
+      const pinInput = document.getElementById('pin-input');
+      const pin = pinInput.value.trim();
       const button = document.getElementById('login-button');
       const errorMessage = document.getElementById('error-message');
       const form = document.getElementById('login-form');
       
+      // Clear previous errors
+      errorMessage.classList.add('hidden');
+      form.classList.remove('shake');
+      
+      if (!pin) {
+        errorMessage.textContent = 'Please enter your PIN';
+        errorMessage.classList.remove('hidden');
+        form.classList.add('shake');
+        setTimeout(() => form.classList.remove('shake'), 500);
+        pinInput.focus();
+        return;
+      }
+      
       button.disabled = true;
       button.innerHTML = '<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i><span>Signing in...</span>';
       lucide.createIcons();
-      errorMessage.classList.add('hidden');
-      form.classList.remove('shake');
 
       try {
         const res = await fetch('/api/login', {
@@ -119,18 +131,35 @@
           body: JSON.stringify({ pin })
         });
 
-        const data = await res.json();
+        let data;
+        try {
+          data = await res.json();
+        } catch {
+          throw new Error('Server error — please try again');
+        }
 
         if (res.ok && data.success) {
-          window.location.href = '/loading?redirect=/';
+          // Redirect based on role returned from server
+          const role = data.data?.role;
+          let redirectTarget = '/';
+          if (role === 'transport') redirectTarget = '/drivers';
+          if (role === 'storage') redirectTarget = '/storage';
+          window.location.href = redirectTarget;
+        } else if (res.status === 401) {
+          throw new Error('Invalid PIN — please try again');
         } else {
-          throw new Error(data.error || 'Login failed');
+          throw new Error(data.error || 'Login failed — please try again');
         }
       } catch (err) {
-        errorMessage.textContent = err.message || 'Invalid PIN code';
+        const message = err instanceof Error ? err.message : 'Something went wrong';
+        errorMessage.textContent = message;
         errorMessage.classList.remove('hidden');
         form.classList.add('shake');
         setTimeout(() => form.classList.remove('shake'), 500);
+        
+        // Clear PIN and refocus for retry
+        pinInput.value = '';
+        pinInput.focus();
         
         button.disabled = false;
         button.innerHTML = '<i data-lucide="log-in" class="w-5 h-5"></i><span>Sign In</span>';
