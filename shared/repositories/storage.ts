@@ -332,6 +332,7 @@ export class StorageRepository extends BaseRepository {
       | 'storage_days' | 'storage_start_date' | 'storage_end_date'
       | 'bag_count_large' | 'bag_count_carryon' | 'bag_count_backpack'
       | 'luggage_description' | 'special_instructions' | 'notes'
+      | 'price_cents' | 'total_price_cents' | 'storage_fee_cents'
     >>
   ): Promise<boolean> {
     // Build dynamic SET clause from allowed fields
@@ -352,6 +353,9 @@ export class StorageRepository extends BaseRepository {
       luggage_description: 'luggage_description',
       special_instructions: 'special_instructions',
       notes: 'notes',
+      price_cents: 'price_cents',
+      total_price_cents: 'total_price_cents',
+      storage_fee_cents: 'storage_fee_cents',
     };
 
     const setClauses: string[] = [];

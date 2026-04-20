@@ -799,6 +799,29 @@ const worker: ExportedHandler<Env> = {
           }
         }
 
+        // Sync linked date fields (start date counts as day 1)
+        const dateFields = ['storage_days', 'storage_start_date', 'storage_end_date'];
+        const anyDateChanged = dateFields.some(f => f in updates);
+        if (anyDateChanged) {
+          const days = updates.storage_days !== undefined ? Number(updates.storage_days) : (current.storage_days || 1);
+          const start = updates.storage_start_date !== undefined ? String(updates.storage_start_date) : (current.storage_start_date || '');
+          const end = updates.storage_end_date !== undefined ? String(updates.storage_end_date) : (current.storage_end_date || '');
+
+          if (start && days && !end) {
+            const d = new Date(start + 'T00:00:00');
+            d.setDate(d.getDate() + (days - 1));
+            updates.storage_end_date = d.toISOString().split('T')[0];
+          } else if (start && end && !updates.storage_days) {
+            const s = new Date(start + 'T00:00:00');
+            const e = new Date(end + 'T00:00:00');
+            updates.storage_days = Math.round((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+          } else if (end && days && !start) {
+            const d = new Date(end + 'T00:00:00');
+            d.setDate(d.getDate() - (days - 1));
+            updates.storage_start_date = d.toISOString().split('T')[0];
+          }
+        }
+
         const bagFields = ['bag_count_large', 'bag_count_carryon', 'bag_count_backpack'];
         const bagCountChanged = bagFields.some(f => f in updates);
         
@@ -806,11 +829,16 @@ const worker: ExportedHandler<Env> = {
           const large = Number(updates.bag_count_large ?? current.bag_count_large ?? 0);
           const carryon = Number(updates.bag_count_carryon ?? current.bag_count_carryon ?? 0);
           const backpack = Number(updates.bag_count_backpack ?? current.bag_count_backpack ?? 0);
-          const bagPriceCents = (large * 1000) + (carryon * 700) + (backpack * 600);
-          const storageFee = current.storage_fee_cents || 0;
+          const storageDays = Number(updates.storage_days ?? current.storage_days ?? 1);
+          
+          // Pricing per day: Large $10, Carry-on $7, Backpack $6 (in cents)
+          const bagPricePerDay = (large * 1000) + (carryon * 700) + (backpack * 600);
+          const storageFeeCents = bagPricePerDay * storageDays;
+          
           const pickupFee = current.pickup_fee_cents || 0;
           const deliveryFee = current.delivery_fee_cents || 0;
-          updates.price_cents = bagPriceCents + storageFee + pickupFee + deliveryFee;
+          updates.storage_fee_cents = storageFeeCents;
+          updates.price_cents = storageFeeCents + pickupFee + deliveryFee;
           updates.total_price_cents = updates.price_cents;
         }
 

@@ -1146,12 +1146,59 @@
         const large = parseInt(document.getElementById('edit-bag-large').value || '0', 10);
         const carryon = parseInt(document.getElementById('edit-bag-carryon').value || '0', 10);
         const backpack = parseInt(document.getElementById('edit-bag-backpack').value || '0', 10);
-        const total = (large * 10) + (carryon * 7) + (backpack * 6);
-        document.getElementById('edit-price-preview').innerText = `Bag price: $${total.toFixed(2)}`;
+        const days = parseInt(document.getElementById('edit-storage-days').value || '1', 10);
+        const perDay = (large * 10) + (carryon * 7) + (backpack * 6);
+        const total = perDay * days;
+        document.getElementById('edit-price-preview').innerText = 
+            `Bag storage: $${perDay.toFixed(2)}/day × ${days} days = $${total.toFixed(2)}`;
     }
 
-    ['edit-bag-large', 'edit-bag-carryon', 'edit-bag-backpack'].forEach(id => {
+    ['edit-bag-large', 'edit-bag-carryon', 'edit-bag-backpack', 'edit-storage-days'].forEach(id => {
         document.getElementById(id).addEventListener('input', updatePricePreview);
+    });
+
+    // Link storage days ↔ dates (start date counts as day 1)
+    function addDays(startStr, days) {
+        if (!startStr || !days) return '';
+        const d = new Date(startStr + 'T00:00:00');
+        d.setDate(d.getDate() + (days - 1));
+        return d.toISOString().split('T')[0];
+    }
+
+    function daysBetween(startStr, endStr) {
+        if (!startStr || !endStr) return '';
+        const start = new Date(startStr + 'T00:00:00');
+        const end = new Date(endStr + 'T00:00:00');
+        const diffMs = end - start;
+        const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1;
+        return diffDays > 0 ? diffDays : '';
+    }
+
+    document.getElementById('edit-storage-days').addEventListener('input', function() {
+        const days = parseInt(this.value, 10);
+        const start = document.getElementById('edit-storage-start').value;
+        if (start && days > 0) {
+            document.getElementById('edit-storage-end').value = addDays(start, days);
+        }
+    });
+
+    document.getElementById('edit-storage-start').addEventListener('input', function() {
+        const start = this.value;
+        const days = parseInt(document.getElementById('edit-storage-days').value, 10);
+        if (start && days > 0) {
+            document.getElementById('edit-storage-end').value = addDays(start, days);
+        }
+    });
+
+    document.getElementById('edit-storage-end').addEventListener('input', function() {
+        const start = document.getElementById('edit-storage-start').value;
+        const end = this.value;
+        if (start && end) {
+            const days = daysBetween(start, end);
+            if (days) {
+                document.getElementById('edit-storage-days').value = days;
+            }
+        }
     });
 
     async function saveEdit() {
