@@ -6,6 +6,39 @@ export interface AuthenticatedRequest extends Request {
   jwt?: ReturnType<typeof verifyJWT> extends Promise<infer T> ? T : never;
 }
 
+/** Parse the ROLES JSON secret into a role->pin map */
+export function parseRoles(env: Env): Record<string, string> {
+  try {
+    return JSON.parse(env.ROLES || '{}');
+  } catch {
+    return {};
+  }
+}
+
+/** Validate a PIN against the ROLES map. Returns the matched role or null. */
+export function validatePin(pin: string, env: Env): string | null {
+  const roles = parseRoles(env);
+  for (const [role, rolePin] of Object.entries(roles)) {
+    if (rolePin === pin) return role;
+  }
+  return null;
+}
+
+/** Get the role from the authenticated request */
+export function getRole(request: Request): string | null {
+  const jwt = (request as AuthenticatedRequest).jwt;
+  return jwt?.role || null;
+}
+
+/** Check if the request's role is in the allowed list. Returns a Response if denied, null if allowed. */
+export function requireRole(request: Request, allowedRoles: string[]): Response | null {
+  const role = getRole(request);
+  if (!role || !allowedRoles.includes(role)) {
+    return unauthorizedResponse('Insufficient permissions');
+  }
+  return null;
+}
+
 export async function authMiddleware(
   request: Request,
   env: Env
@@ -72,11 +105,4 @@ export async function authMiddleware(
       500
     );
   }
-}
-
-// Legacy PIN auth for migration/backup (can be removed after JWT is fully adopted)
-export async function legacyPinAuth(request: Request, env: Env): Promise<boolean> {
-  const url = new URL(request.url);
-  const pin = url.searchParams.get('pin');
-  return pin === env.ADMIN_PIN;
 }

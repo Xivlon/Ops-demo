@@ -1,7 +1,95 @@
 import { Pool } from '@neondatabase/serverless';
 import type { ExportedHandler } from '@cloudflare/workers-types';
-import type { Env, EnhancedDriverStats } from '../../../shared/types';
+import type { Env, EnhancedDriverStats, JWTPayload } from '../../../shared/types';
 import { createRepositories } from '../../../shared/repositories';
+
+// JWT utilities (copied from shared/utils/jwt to avoid import issues)
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
+function base64UrlEncode(buffer: ArrayBuffer | Uint8Array): string {
+  const arr = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+  return btoa(String.fromCharCode(...arr))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+function base64UrlDecode(str: string): ArrayBuffer {
+  const base64 = str
+    .replace(/-/g, '+')
+    .replace(/_/g, '/')
+    .padEnd(str.length + (4 - (str.length % 4)) % 4, '=');
+  const bytes = atob(base64).split('').map(c => c.charCodeAt(0));
+  return new Uint8Array(bytes).buffer;
+}
+
+async function sign(data: string, secret: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(data));
+  return base64UrlEncode(signature);
+}
+
+async function verify(data: string, signature: string, secret: string): Promise<boolean> {
+  const expectedSig = await sign(data, secret);
+  if (signature.length !== expectedSig.length) return false;
+  let result = 0;
+  for (let i = 0; i < signature.length; i++) {
+    result |= signature.charCodeAt(i) ^ expectedSig.charCodeAt(i);
+  }
+  return result === 0;
+}
+
+async function verifyJWT(token: string, env: Env): Promise<JWTPayload | null> {
+  try {
+    const [headerB64, payloadB64, signature] = token.split('.');
+    if (!headerB64 || !payloadB64 || !signature) return null;
+    
+    const signingInput = `${headerB64}.${payloadB64}`;
+    const isValid = await verify(signingInput, signature, env.JWT_SECRET);
+    if (!isValid) return null;
+    
+    const payloadArray = new Uint8Array(base64UrlDecode(payloadB64));
+    const payloadJson = decoder.decode(payloadArray);
+    const payload = JSON.parse(payloadJson) as JWTPayload;
+    
+    const now = Math.floor(Date.now() / 1000);
+    if (payload.exp < now) return null;
+    
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+function extractJWT(request: Request): string | null {
+  const authHeader = request.headers.get('Authorization');
+  if (authHeader?.startsWith('Bearer ')) {
+    return authHeader.slice(7);
+  }
+  const cookie = request.headers.get('Cookie');
+  if (cookie) {
+    const match = cookie.match(/token=([^;]+)/);
+    if (match) return match[1];
+  }
+  return null;
+}
+
+async function authenticate(request: Request, env: Env): Promise<JWTPayload | null> {
+  const token = extractJWT(request);
+  if (!token) return null;
+  const payload = await verifyJWT(token, env);
+  if (!payload) return null;
+  // Only admin and transport roles may access this worker
+  if (payload.role !== 'admin' && payload.role !== 'transport') return null;
+  return payload;
+}
 
 // Create a new pool for each request (Cloudflare Workers requirement)
 function createPool(env: Env): Pool {
@@ -50,6 +138,25 @@ const worker: ExportedHandler<Env> = {
           'Access-Control-Max-Age': '86400',
         },
       });
+    }
+
+    // Public endpoints that don't require auth
+    const publicPaths = ['/ping', '/health', '/'];
+    if (!publicPaths.includes(path)) {
+      const auth = await authenticate(request, env);
+      if (!auth) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'Authentication required',
+          code: 'UNAUTHORIZED'
+        }), {
+          status: 401,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': origin || '*',
+          },
+        });
+      }
     }
 
     // Root endpoint - API documentation

@@ -46,15 +46,15 @@ async function verify(data: string, signature: string, secret: string): Promise<
   return result === 0;
 }
 
-export async function createJWT(env: Env): Promise<string> {
+export async function createJWT(env: Env, role: string): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const expiryHours = parseInt(env.JWT_EXPIRY_HOURS || '24', 10);
   
   const payload: JWTPayload = {
-    sub: 'admin',
+    sub: role,
     iat: now,
     exp: now + (expiryHours * 3600),
-    role: 'admin'
+    role
   };
 
   const header = { alg: 'HS256', typ: 'JWT' };

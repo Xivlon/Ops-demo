@@ -58,20 +58,23 @@ Benefits:
 - Easier to test and maintain
 - Prepared statements for security
 
-### 2. JWT Authentication (Replaces PIN-in-URL)
-Instead of `?pin=1234` in every URL:
+### 2. JWT Authentication with Role-Based Access
+Instead of a single `?pin=1234` in every URL, we use 3 role-based PINs:
 
 ```typescript
-// Login POST /api/login → Sets HttpOnly cookie with JWT
+// ROLES = {"admin":"847291","storage":"563204","transport":"918473"}
+// Login POST /api/login → Validates PIN against ROLES map
+//                   → Sets HttpOnly cookie with JWT (role claim)
 // Subsequent requests → Cookie automatically sent
-// JWT verified via authMiddleware
+//                   → JWT verified + role checked per route
 ```
 
 Benefits:
 - No sensitive data in URLs (logs, browser history)
 - Automatic token expiry
-- Can revoke sessions server-side
+- Can revoke sessions server-side by rotating ROLES secret
 - CSRF protection via SameSite cookies
+- Granular access: storage staff can't touch transport data, and vice versa
 
 ### 3. Connection Pooling with Neon Pool
 Instead of creating connections per request:
@@ -129,9 +132,10 @@ Benefits:
 
 5. **Deploy**
    ```bash
-   # Set secrets first
+   # Set secrets first (NEVER commit these to version control)
    wrangler secret put DATABASE_URL
    wrangler secret put JWT_SECRET
+   wrangler secret put ROLES
    
    # Then deploy
    npm run deploy
@@ -140,37 +144,48 @@ Benefits:
 ## API Endpoints
 
 ### Authentication
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/login` | Login with PIN, sets JWT cookie |
-| POST | `/api/logout` | Clear JWT cookie |
+| Method | Endpoint | Description | Roles |
+|--------|----------|-------------|-------|
+| POST | `/api/login` | Login with PIN, sets JWT cookie | Any valid PIN |
+| POST | `/api/logout` | Clear JWT cookie | Any |
 
-### Dashboard
+### Dashboard (Admin Only)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/` | Dashboard HTML |
 | GET | `/api/dashboard/stats` | Dashboard statistics |
+| GET | `/api/reports/*` | Revenue, earnings, driver reports |
+| GET | `/api/export/*` | CSV/JSON exports |
 
-### Shipments
+### Shipments & Transport (Admin + Transport)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| GET | `/drivers` | Driver stats HTML page |
 | GET | `/api/shipments` | List shipments (with filters) |
 | POST | `/api/shipments/:id/assign` | Assign driver to shipment |
-
-### Drivers
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/drivers` | Driver stats HTML |
+| POST | `/api/shipments/:id/cancel` | Cancel shipment |
 | GET | `/api/drivers` | List all drivers |
 | GET | `/api/drivers/online` | List online drivers |
 | GET | `/api/drivers/stats` | Cached driver stats |
-| GET | `/api/drivers/stats/live` | Live driver stats |
-| POST | `/api/drivers/stats/refresh` | Refresh stats cache |
+| GET | `/api/drivers/stats/enhanced` | Enhanced driver statistics |
 
-### Legacy (for migration)
+### Storage (Admin + Storage)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/neon-query` | Direct SQL queries (PIN auth) |
+| GET | `/storage` | Storage operations HTML page |
+| GET | `/api/storage` | List storage orders |
+| GET | `/api/storage/stats` | Storage statistics |
+| POST | `/api/storage/:id/assign-pickup` | Assign pickup driver |
+| POST | `/api/storage/:id/assign-delivery` | Assign delivery driver |
+| POST | `/api/storage/:id/confirm-pickup` | Confirm pickup |
+| POST | `/api/storage/:id/confirm-dropoff` | Confirm dropoff |
+| POST | `/api/storage/:id/status` | Update storage status |
+| POST | `/api/storage/:id/cancel` | Cancel storage order |
+
+### Legacy (for migration)
+| Method | Endpoint | Description | Roles |
+|--------|----------|-------------|-------|
+| POST | `/api/neon-query` | Direct SQL queries | Admin only |
 
 ## Environment Variables
 
@@ -178,16 +193,18 @@ Benefits:
 |----------|----------|-------------|
 | `DATABASE_URL` | Yes | Neon PostgreSQL connection string |
 | `JWT_SECRET` | Yes | Secret key for JWT signing |
-| `ADMIN_PIN` | Yes | PIN for initial authentication |
+| `ROLES` | Yes | JSON map of role→PIN: `{"admin":"...","storage":"...","transport":"..."}` |
 | `JWT_EXPIRY_HOURS` | No | JWT expiry (default: 24) |
 
 ## Security Considerations
 
-1. **JWT Secret**: Must be cryptographically random (32+ bytes)
-2. **ADMIN_PIN**: Change from default in production
-3. **CORS**: Currently allows all origins (`*`) - restrict in production
-4. **Rate Limiting**: Consider adding Cloudflare Rate Limiting rules
-5. **Query Safety**: Repository layer  uses prepared statements
+1. **Secrets in `wrangler.toml`**: Never put `DATABASE_URL`, `JWT_SECRET`, or `ROLES` in `[vars]`. Use `wrangler secret put` or `.dev.vars` (gitignored).
+2. **JWT Secret**: Must be cryptographically random (32+ bytes)
+3. **ROLES PINs**: Use secure 6-digit PINs. Rotate by updating the `ROLES` secret.
+4. **CORS**: Currently allows all origins (`*`) - restrict in production
+5. **Rate Limiting**: Consider adding Cloudflare Rate Limiting rules
+6. **Query Safety**: Repository layer uses prepared statements
+7. **Defense in depth**: Sub-workers (storage, driver-stats) independently verify JWTs and roles, even when proxied through the main worker.
 
 ## Testing TypeScript
 

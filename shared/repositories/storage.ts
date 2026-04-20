@@ -318,4 +318,71 @@ export class StorageRepository extends BaseRepository {
     if (storage.bag_count_backpack) parts.push(`${storage.bag_count_backpack}B`);
     return parts.length > 0 ? parts.join(', ') : 'N/A';
   }
+
+  /**
+   * Update a storage order. Only allowed when status is PENDING_DROPOFF.
+   * Returns true if the order was found and updated.
+   */
+  async updateOrder(
+    id: string,
+    updates: Partial<Pick<Storage,
+      | 'customer_name' | 'customer_email' | 'customer_phone'
+      | 'pickup_contact_name' | 'pickup_contact_phone'
+      | 'delivery_contact_name' | 'delivery_contact_phone'
+      | 'storage_days' | 'storage_start_date' | 'storage_end_date'
+      | 'bag_count_large' | 'bag_count_carryon' | 'bag_count_backpack'
+      | 'luggage_description' | 'special_instructions' | 'notes'
+    >>
+  ): Promise<boolean> {
+    // Build dynamic SET clause from allowed fields
+    const allowedFields: Record<string, string> = {
+      customer_name: 'customer_name',
+      customer_email: 'customer_email',
+      customer_phone: 'customer_phone',
+      pickup_contact_name: 'pickup_contact_name',
+      pickup_contact_phone: 'pickup_contact_phone',
+      delivery_contact_name: 'delivery_contact_name',
+      delivery_contact_phone: 'delivery_contact_phone',
+      storage_days: 'storage_days',
+      storage_start_date: 'storage_start_date',
+      storage_end_date: 'storage_end_date',
+      bag_count_large: 'bag_count_large',
+      bag_count_carryon: 'bag_count_carryon',
+      bag_count_backpack: 'bag_count_backpack',
+      luggage_description: 'luggage_description',
+      special_instructions: 'special_instructions',
+      notes: 'notes',
+    };
+
+    const setClauses: string[] = [];
+    const values: unknown[] = [];
+    let paramIndex = 1;
+
+    for (const [key, dbColumn] of Object.entries(allowedFields)) {
+      if (key in updates && updates[key as keyof typeof updates] !== undefined) {
+        setClauses.push(`${dbColumn} = $${paramIndex}`);
+        values.push(updates[key as keyof typeof updates]);
+        paramIndex++;
+      }
+    }
+
+    if (setClauses.length === 0) {
+      return false;
+    }
+
+    // Add updated_at and id
+    setClauses.push(`updated_at = NOW()`);
+    values.push(id);
+
+    const sql = `
+      UPDATE storage
+      SET ${setClauses.join(', ')}
+      WHERE id = $${paramIndex}
+        AND status = 'PENDING_DROPOFF'
+      RETURNING id
+    `;
+
+    const result = await this.query<{ id: string }>(sql, values);
+    return result.length > 0;
+  }
 }

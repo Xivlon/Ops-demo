@@ -90,7 +90,11 @@ function extractJWT(request: Request): string | null {
 async function authenticate(request: Request, env: Env): Promise<JWTPayload | null> {
   const token = extractJWT(request);
   if (!token) return null;
-  return verifyJWT(token, env);
+  const payload = await verifyJWT(token, env);
+  if (!payload) return null;
+  // Only admin and storage roles may access this worker
+  if (payload.role !== 'admin' && payload.role !== 'storage') return null;
+  return payload;
 }
 
 // Create a new pool for each request (Cloudflare Workers requirement)
@@ -447,6 +451,88 @@ const worker: ExportedHandler<Env> = {
         return jsonResponse({ 
           success: true, 
           data: storage,
+          meta: { source: 'storage-worker' }
+        }, 200, origin);
+      }
+
+      // Update storage order (admin only, only when PENDING_DROPOFF)
+      const updateMatch = path.match(/^\/api\/storage\/([^/]+)$/);
+      if (updateMatch && method === 'PUT') {
+        const storageId = updateMatch[1];
+        
+        // Admin-only check
+        const authPayload = await authenticate(request, env);
+        if (authPayload?.role !== 'admin') {
+          await pool.end();
+          return errorResponse('Admin access required', 'FORBIDDEN', 403, origin);
+        }
+
+        const body = await request.json() as Record<string, unknown>;
+        
+        // Fetch current order to merge bag counts for price recalculation
+        const current = await repos.storage.findById(storageId);
+        if (!current) {
+          await pool.end();
+          return errorResponse('Storage order not found', 'NOT_FOUND', 404, origin);
+        }
+
+        // Build allowed updates
+        const allowedFields = [
+          'customer_name', 'customer_email', 'customer_phone',
+          'pickup_contact_name', 'pickup_contact_phone',
+          'delivery_contact_name', 'delivery_contact_phone',
+          'storage_days', 'storage_start_date', 'storage_end_date',
+          'bag_count_large', 'bag_count_carryon', 'bag_count_backpack',
+          'luggage_description', 'special_instructions', 'notes'
+        ];
+
+        const updates: Record<string, unknown> = {};
+        for (const field of allowedFields) {
+          if (field in body && body[field] !== undefined) {
+            updates[field] = body[field];
+          }
+        }
+
+        // If any bag count changed, recalculate price_cents
+        const bagFields = ['bag_count_large', 'bag_count_carryon', 'bag_count_backpack'];
+        const bagCountChanged = bagFields.some(f => f in updates);
+        
+        if (bagCountChanged) {
+          const large = Number(updates.bag_count_large ?? current.bag_count_large ?? 0);
+          const carryon = Number(updates.bag_count_carryon ?? current.bag_count_carryon ?? 0);
+          const backpack = Number(updates.bag_count_backpack ?? current.bag_count_backpack ?? 0);
+          // Pricing: Large $10, Carry-on $7, Backpack $6 (in cents)
+          const bagPriceCents = (large * 1000) + (carryon * 700) + (backpack * 600);
+          
+          // Preserve non-bag fees and recalculate total
+          const storageFee = current.storage_fee_cents || 0;
+          const pickupFee = current.pickup_fee_cents || 0;
+          const deliveryFee = current.delivery_fee_cents || 0;
+          updates.price_cents = bagPriceCents + storageFee + pickupFee + deliveryFee;
+          updates.total_price_cents = updates.price_cents;
+        }
+
+        if (Object.keys(updates).length === 0) {
+          await pool.end();
+          return errorResponse('No valid fields to update', 'NO_CHANGES', 400, origin);
+        }
+
+        const success = await repos.storage.updateOrder(storageId, updates);
+        
+        if (!success) {
+          await pool.end();
+          return errorResponse(
+            'Failed to update order — may not exist or is no longer in pending dropoff status',
+            'UPDATE_FAILED',
+            400,
+            origin
+          );
+        }
+
+        await pool.end();
+        return jsonResponse({ 
+          success: true, 
+          data: { message: 'Order updated successfully' },
           meta: { source: 'storage-worker' }
         }, 200, origin);
       }

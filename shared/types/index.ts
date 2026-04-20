@@ -1,6 +1,6 @@
 // Environment bindings
 export interface Env {
-  ADMIN_PIN: string;
+  ROLES: string;
   DATABASE_URL: string;
   JWT_SECRET: string;
   JWT_EXPIRY_HOURS?: string;
@@ -12,7 +12,7 @@ export interface JWTPayload {
   sub: string;
   iat: number;
   exp: number;
-  role: 'admin';
+  role: string;
 }
 
 // API Response types

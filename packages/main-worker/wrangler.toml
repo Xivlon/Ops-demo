@@ -11,11 +11,19 @@ compatibility_flags = ['nodejs_compat']
 enabled = true
 invocation_logs = true
 
-# Environment variables
+# Non-sensitive environment variables
 [vars]
-DATABASE_URL = 'postgresql://neondb_owner:npg_wrA2IV4GaHzD@ep-proud-cake-a4m2vdkf-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require'
 JWT_EXPIRY_HOURS = '24'
-ADMIN_PIN = '1234'
+
+# SECURITY: Secrets (DATABASE_URL, JWT_SECRET, ROLES) must be set via:
+#   wrangler secret put DATABASE_URL
+#   wrangler secret put JWT_SECRET
+#   wrangler secret put ROLES
+#
+# For local development, create a .dev.vars file (already gitignored):
+#   DATABASE_URL=postgresql://...
+#   JWT_SECRET=...
+#   ROLES={"admin":"...","storage":"...","transport":"..."}
 
 # Environment-specific configuration
 [env.staging]
