@@ -142,7 +142,7 @@
           // Redirect based on role returned from server
           const role = data.data?.role;
           let redirectTarget = '/';
-          if (role === 'transport') redirectTarget = '/drivers';
+          if (role === 'transport') redirectTarget = '/';
           if (role === 'storage') redirectTarget = '/storage';
           window.location.href = redirectTarget;
         } else if (res.status === 401) {
