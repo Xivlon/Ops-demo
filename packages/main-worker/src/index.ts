@@ -763,10 +763,10 @@ const worker: ExportedHandler<Env> = {
         return jsonResponse({ success: true, data: { message: 'Storage order cancelled' } }, 200, true, origin);
       }
 
-      // Update storage order (admin only, only when PENDING_DROPOFF)
+      // Update storage order (admin + storage, only when PENDING_DROPOFF)
       const updateStorageMatch = path.match(/^\/api\/storage\/([^/]+)$/);
       if (updateStorageMatch && method === 'PUT') {
-        const roleCheck = requireRole(request, ['admin']);
+        const roleCheck = requireRole(request, ['admin', 'storage']);
         if (roleCheck) { await pool.end(); return roleCheck; }
         const storageId = updateStorageMatch[1];
         const body = await request.json() as Record<string, unknown>;
