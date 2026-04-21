@@ -15,15 +15,17 @@ invocation_logs = true
 [vars]
 JWT_EXPIRY_HOURS = '24'
 
-# SECURITY: Secrets (DATABASE_URL, JWT_SECRET, ROLES) must be set via:
+# SECURITY: Secrets must be set via:
 #   wrangler secret put DATABASE_URL
 #   wrangler secret put JWT_SECRET
 #   wrangler secret put ROLES
+#   wrangler secret put PIN_PEPPER  # Optional but strongly recommended for PIN hashing
 #
 # For local development, create a .dev.vars file (already gitignored):
 #   DATABASE_URL=postgresql://...
 #   JWT_SECRET=...
 #   ROLES={"admin":"...","storage":"...","transport":"..."}
+#   PIN_PEPPER=your-pepper-here
 
 # Environment-specific configuration
 [env.staging]

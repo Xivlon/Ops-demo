@@ -83,6 +83,14 @@ export async function verifyJWT(token: string, env: Env): Promise<JWTPayload | n
       return null;
     }
 
+    // Parse and validate header
+    const headerArray = new Uint8Array(base64UrlDecode(headerB64));
+    const headerJson = decoder.decode(headerArray);
+    const header = JSON.parse(headerJson) as { alg?: string; typ?: string };
+    if (header.alg !== 'HS256' || header.typ !== 'JWT') {
+      return null;
+    }
+
     // Parse payload
     const payloadArray = new Uint8Array(base64UrlDecode(payloadB64));
     const payloadJson = decoder.decode(payloadArray);

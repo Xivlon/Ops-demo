@@ -15,13 +15,48 @@ export function parseRoles(env: Env): Record<string, string> {
   }
 }
 
+/** Hash a PIN using HMAC-SHA256 with a pepper */
+async function hashPin(pin: string, pepper: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(pepper),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(pin));
+  return btoa(String.fromCharCode(...new Uint8Array(signature)));
+}
+
 /** Validate a PIN against the ROLES map. Returns the matched role or null. */
-export function validatePin(pin: string, env: Env): string | null {
+export async function validatePin(pin: string, env: Env): Promise<string | null> {
   const roles = parseRoles(env);
+
+  // If PIN_PEPPER is configured, use hashed comparison (secure mode)
+  if (env.PIN_PEPPER) {
+    const inputHash = await hashPin(pin, env.PIN_PEPPER);
+    for (const [role, rolePinHash] of Object.entries(roles)) {
+      if (rolePinHash === inputHash) return role;
+    }
+    return null;
+  }
+
+  // Fallback to plaintext comparison (backward compatibility — migrate to PIN_PEPPER!)
+  console.warn('[SECURITY] PIN_PEPPER is not set. PINs are being compared in plaintext. Set PIN_PEPPER and hash your ROLES secret.');
   for (const [role, rolePin] of Object.entries(roles)) {
     if (rolePin === pin) return role;
   }
   return null;
+}
+
+/** Generate hashed ROLES JSON for a given pepper (run locally to migrate) */
+export async function generateHashedRoles(roles: Record<string, string>, pepper: string): Promise<Record<string, string>> {
+  const hashed: Record<string, string> = {};
+  for (const [role, pin] of Object.entries(roles)) {
+    hashed[role] = await hashPin(pin, pepper);
+  }
+  return hashed;
 }
 
 /** Get the role from the authenticated request */
@@ -51,7 +86,7 @@ export async function authMiddleware(
 
     // Public routes that don't require auth
     const url = new URL(request.url);
-    const publicRoutes = ['/login', '/api/login', '/test', '/ping'];
+    const publicRoutes = ['/login', '/api/login', '/ping'];
     
     if (publicRoutes.includes(url.pathname)) {
       return null;

@@ -4,7 +4,9 @@ export interface Env {
   DATABASE_URL: string;
   JWT_SECRET: string;
   JWT_EXPIRY_HOURS?: string;
+  PIN_PEPPER?: string; // Optional: secret for hashing PINs (recommended)
   DRIVER_STATS_WORKER_URL?: string; // Optional: URL for driver stats worker
+  STORAGE_WORKER_URL?: string; // Optional: URL for storage worker
 }
 
 // JWT Payload

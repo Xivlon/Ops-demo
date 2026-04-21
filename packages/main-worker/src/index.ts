@@ -21,14 +21,32 @@ import {
 } from './generated/html-templates';
 
 // Configuration for driver stats worker
-const DRIVER_STATS_WORKER_URL = 'https://driver-stats.constance-api.workers.dev';
+const DEFAULT_DRIVER_STATS_WORKER_URL = 'https://driver-stats.constance-api.workers.dev';
 const USE_DRIVER_STATS_WORKER = true; // Set to false to use direct queries
 const DRIVER_STATS_TIMEOUT_MS = 10000; // 10 second timeout for proxy requests
 
 // Configuration for storage worker
-const STORAGE_WORKER_URL = 'https://storage.constance-api.workers.dev';
+const DEFAULT_STORAGE_WORKER_URL = 'https://storage.constance-api.workers.dev';
 const USE_STORAGE_WORKER = true; // Set to false to disable storage worker and use direct queries
 const STORAGE_TIMEOUT_MS = 10000; // 10 second timeout for proxy requests
+
+// Simple in-memory rate limiter for login (per-IP, resets on worker restart)
+interface RateLimitEntry { count: number; resetAt: number }
+const loginAttempts = new Map<string, RateLimitEntry>();
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const record = loginAttempts.get(ip);
+  if (!record || now > record.resetAt) {
+    loginAttempts.set(ip, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
+    return true;
+  }
+  if (record.count >= MAX_LOGIN_ATTEMPTS) return false;
+  record.count++;
+  return true;
+}
 
 // Create a new pool for each request (Cloudflare Workers requirement)
 function createPool(env: Env): Pool {
@@ -62,14 +80,16 @@ async function testConnection(pool: Pool): Promise<boolean> {
 async function proxyToDriverStatsWorker(
   endpoint: string, 
   origin: string | null,
-  request: Request
+  request: Request,
+  env: Env
 ): Promise<Response> {
   if (!USE_DRIVER_STATS_WORKER) {
     throw new Error('Driver stats worker not enabled');
   }
 
   try {
-    const url = `${DRIVER_STATS_WORKER_URL}${endpoint}`;
+    const workerUrl = env.DRIVER_STATS_WORKER_URL || DEFAULT_DRIVER_STATS_WORKER_URL;
+    const url = `${workerUrl}${endpoint}`;
     console.log(`Proxying to driver stats worker: ${url}`);
     
     const controller = new AbortController();
@@ -120,14 +140,16 @@ async function proxyToStorageWorker(
   method: string, 
   body: unknown | null, 
   origin: string | null,
-  request: Request
+  request: Request,
+  env: Env
 ): Promise<Response> {
   if (!USE_STORAGE_WORKER) {
     throw new Error('Storage worker not enabled');
   }
 
   try {
-    const url = `${STORAGE_WORKER_URL}${endpoint}`;
+    const workerUrl = env.STORAGE_WORKER_URL || DEFAULT_STORAGE_WORKER_URL;
+    const url = `${workerUrl}${endpoint}`;
     console.log(`[PROXY] Storage worker: ${method} ${url}`);
     
     const controller = new AbortController();
@@ -203,9 +225,7 @@ const worker: ExportedHandler<Env> = {
             connected: isConnected,
             message: 'Database connection OK',
             driverStatsWorkerEnabled: USE_DRIVER_STATS_WORKER,
-            driverStatsWorkerUrl: DRIVER_STATS_WORKER_URL,
-            storageWorkerEnabled: USE_STORAGE_WORKER,
-            storageWorkerUrl: STORAGE_WORKER_URL
+            storageWorkerEnabled: USE_STORAGE_WORKER
           }
         }, 200, true, origin);
       } catch (error) {
@@ -262,9 +282,15 @@ const worker: ExportedHandler<Env> = {
 
       // Login
       if (path === '/api/login' && method === 'POST') {
+        const clientIP = request.headers.get('CF-Connecting-IP') || 'unknown';
+        if (!checkRateLimit(clientIP)) {
+          await pool.end();
+          return errorResponse('Too many login attempts. Try again in 15 minutes.', 'RATE_LIMITED', 429);
+        }
+
         const body = await request.json() as LoginRequest;
         
-        const role = validatePin(body.pin, env);
+        const role = await validatePin(body.pin, env);
         if (!role) {
           await pool.end();
           return errorResponse('Invalid PIN', 'INVALID_PIN', 401);
@@ -380,7 +406,7 @@ const worker: ExportedHandler<Env> = {
         
         if (USE_DRIVER_STATS_WORKER) {
           try {
-            const response = await proxyToDriverStatsWorker('/api/drivers', origin, request);
+            const response = await proxyToDriverStatsWorker('/api/drivers', origin, request, env);
             await pool.end(); // Close pool before returning
             return response;
           } catch (proxyError) {
@@ -401,7 +427,7 @@ const worker: ExportedHandler<Env> = {
         
         if (USE_DRIVER_STATS_WORKER) {
           try {
-            const response = await proxyToDriverStatsWorker('/api/drivers/online', origin, request);
+            const response = await proxyToDriverStatsWorker('/api/drivers/online', origin, request, env);
             await pool.end(); // Close pool before returning
             return response;
           } catch (proxyError) {
@@ -469,7 +495,7 @@ const worker: ExportedHandler<Env> = {
         
         if (USE_DRIVER_STATS_WORKER) {
           try {
-            const response = await proxyToDriverStatsWorker('/api/drivers/stats/enhanced', origin, request);
+            const response = await proxyToDriverStatsWorker('/api/drivers/stats/enhanced', origin, request, env);
             await pool.end(); // Close pool before returning
             return response;
           } catch (proxyError) {
@@ -491,7 +517,7 @@ const worker: ExportedHandler<Env> = {
         if (USE_STORAGE_WORKER) {
           try {
             const queryString = url.search;
-            const response = await proxyToStorageWorker(`/api/storage${queryString}`, 'GET', null, origin, request);
+            const response = await proxyToStorageWorker(`/api/storage${queryString}`, 'GET', null, origin, request, env);
             await pool.end();
             return response;
           } catch (proxyError) {
@@ -520,7 +546,7 @@ const worker: ExportedHandler<Env> = {
         if (USE_STORAGE_WORKER) {
           try {
             const queryString = url.search;
-            const response = await proxyToStorageWorker(`/api/storage/stats${queryString}`, 'GET', null, origin, request);
+            const response = await proxyToStorageWorker(`/api/storage/stats${queryString}`, 'GET', null, origin, request, env);
             await pool.end();
             return response;
           } catch (proxyError) {
@@ -555,7 +581,8 @@ const worker: ExportedHandler<Env> = {
               'POST', 
               body, 
               origin,
-              request
+              request,
+              env
             );
             await pool.end();
             return response;
@@ -596,7 +623,8 @@ const worker: ExportedHandler<Env> = {
               'POST', 
               body, 
               origin,
-              request
+              request,
+              env
             );
             await pool.end();
             return response;
@@ -631,7 +659,8 @@ const worker: ExportedHandler<Env> = {
               'POST', 
               {}, 
               origin,
-              request
+              request,
+              env
             );
             await pool.end();
             return response;
@@ -666,7 +695,8 @@ const worker: ExportedHandler<Env> = {
               'POST', 
               {}, 
               origin,
-              request
+              request,
+              env
             );
             await pool.end();
             return response;
@@ -707,7 +737,8 @@ const worker: ExportedHandler<Env> = {
               'POST', 
               body, 
               origin,
-              request
+              request,
+              env
             );
             await pool.end();
             return response;
@@ -742,7 +773,8 @@ const worker: ExportedHandler<Env> = {
               'POST', 
               {}, 
               origin,
-              request
+              request,
+              env
             );
             await pool.end();
             return response;
@@ -778,7 +810,8 @@ const worker: ExportedHandler<Env> = {
               'PUT', 
               body, 
               origin,
-              request
+              request,
+              env
             );
             await pool.end();
             return response;

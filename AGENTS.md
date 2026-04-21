@@ -198,13 +198,15 @@ Benefits:
 
 ## Security Considerations
 
-1. **Secrets in `wrangler.toml`**: Never put `DATABASE_URL`, `JWT_SECRET`, or `ROLES` in `[vars]`. Use `wrangler secret put` or `.dev.vars` (gitignored).
+1. **Secrets in `wrangler.toml`**: Never put `DATABASE_URL`, `JWT_SECRET`, `ROLES`, or `PIN_PEPPER` in `[vars]`. Use `wrangler secret put` or `.dev.vars` (gitignored).
 2. **JWT Secret**: Must be cryptographically random (32+ bytes)
-3. **ROLES PINs**: Use secure 6-digit PINs. Rotate by updating the `ROLES` secret.
+3. **PIN Hashing (strongly recommended)**: Set `PIN_PEPPER` and store HMAC-SHA256 hashes in `ROLES` instead of plaintext PINs. See `.env.example` for migration instructions.
 4. **CORS**: Currently allows all origins (`*`) - restrict in production
-5. **Rate Limiting**: Consider adding Cloudflare Rate Limiting rules
-6. **Query Safety**: Repository layer uses prepared statements
+5. **Rate Limiting**: Login attempts are rate-limited in-memory (5 per 15 min per IP). For stronger protection, add Cloudflare Rate Limiting rules.
+6. **Query Safety**: Repository layer uses prepared statements. The `/api/neon-query` legacy endpoint is admin-only but allows raw `UPDATE` — remove it if not needed.
 7. **Defense in depth**: Sub-workers (storage, driver-stats) independently verify JWTs and roles, even when proxied through the main worker.
+8. **Public endpoints**: `/ping` and `/health` are public. `/test` is no longer public (removed from unauthenticated access).
+9. **Worker URLs**: Hardcoded internal worker URLs have been moved to optional environment variables.
 
 ## Testing TypeScript
 
