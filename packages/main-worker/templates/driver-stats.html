@@ -652,23 +652,6 @@
       setTimeout(() => div.remove(), 3000);
     }
 
-    // Auto-fit column widths to the longest value in each column (header or data)
-    function autoColWidths(ws, minWidth = 8, maxWidth = 60) {
-        if (!ws["!ref"]) return;
-        const range = XLSX.utils.decode_range(ws["!ref"]);
-        const widths = [];
-        for (let col = range.s.c; col <= range.e.c; col++) {
-            let max = minWidth;
-            for (let row = range.s.r; row <= range.e.r; row++) {
-                const cell = ws[XLSX.utils.encode_cell({ r: row, c: col })];
-                if (!cell) continue;
-                const len = String(cell.v ?? "").length;
-                if (len > max) max = len;
-            }
-            widths.push({ wch: Math.min(max + 2, maxWidth) });
-        }
-        ws["!cols"] = widths;
-    }
 
     // LuggageLink Revenue Theme XML (injected into generated XLSX files)
     const LL_THEME_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -757,49 +740,216 @@
   </a:extLst>
 </a:theme>`;
 
-    // Apply LuggageLink theme + header styling to generated XLSX files
+    // ── XLSX Styling Engine ─────────────────────────────────────────────────────
+    // SheetJS free build does NOT write cell styles. Instead we:
+    //   1. Write a plain xlsx via SheetJS (data + structure only)
+    //   2. Open the zip with JSZip
+    //   3. Overwrite styles.xml with our own hand-built style table
+    //   4. Patch every cell's @s attribute in sheet1.xml to point to the right style
+    //   5. Inject our custom theme XML
+    // This is the only reliable way to get formatting without SheetJS Pro.
+
+    // Style index constants (must match STYLES_XML below)
+    const SX = {
+        DEFAULT:        0,
+        HEADER:         1,
+        STRIPE:         2,
+        TOTAL:          3,
+        CURRENCY:       4,
+        CURRENCY_BLUE:  5,
+        CURRENCY_PURPLE:6,
+        CURRENCY_GREEN: 7,
+        CURRENCY_STRIPE:8,
+        CURRENCY_BLUE_STRIPE: 9,
+        CURRENCY_PURPLE_STRIPE: 10,
+        CURRENCY_GREEN_STRIPE:  11,
+        INTEGER:        12,
+        INTEGER_STRIPE: 13,
+        PERCENT:        14,
+        PERCENT_STRIPE: 15,
+        STATUS_ONLINE:  16,
+        STATUS_OFFLINE: 17,
+        TOTAL_CURRENCY: 18,
+        TOTAL_INTEGER:  19,
+        LEFT:           20,
+        LEFT_STRIPE:    21,
+    };
+
+    const STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <numFmts count="3">
+    <numFmt numFmtId="164" formatCode="$#,##0.00"/>
+    <numFmt numFmtId="165" formatCode="#,##0"/>
+    <numFmt numFmtId="166" formatCode="0.0%"/>
+  </numFmts>
+  <fonts count="7">
+    <font><sz val="10"/><name val="Segoe UI"/></font>
+    <font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Segoe UI"/></font>
+    <font><sz val="10"/><name val="Segoe UI"/></font>
+    <font><b/><sz val="10"/><name val="Segoe UI"/></font>
+    <font><sz val="10"/><color rgb="FF1D4ED8"/><name val="Segoe UI"/></font>
+    <font><sz val="10"/><color rgb="FF7C3AED"/><name val="Segoe UI"/></font>
+    <font><b/><sz val="10"/><color rgb="FF065F46"/><name val="Segoe UI"/></font>
+  </fonts>
+  <fills count="10">
+    <fill><patternFill patternType="none"/></fill>
+    <fill><patternFill patternType="gray125"/></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF7C3AED"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFF8FAFC"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFE2E8F0"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFD1FAE5"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFF1F5F9"/></patternFill></fill>
+    <fill><patternFill patternType="none"/></fill>
+    <fill><patternFill patternType="none"/></fill>
+    <fill><patternFill patternType="none"/></fill>
+  </fills>
+  <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+  <cellXfs count="22">
+    <xf numFmtId="0"   fontId="0" fillId="0" borderId="0" xfId="0"/>
+    <xf numFmtId="0"   fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0"   fontId="0" fillId="3" borderId="0" xfId="0" applyFill="1"/>
+    <xf numFmtId="0"   fontId="3" fillId="4" borderId="0" xfId="0" applyFont="1" applyFill="1"/>
+    <xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="right"/></xf>
+    <xf numFmtId="164" fontId="4" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1" applyAlignment="1"><alignment horizontal="right"/></xf>
+    <xf numFmtId="164" fontId="5" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1" applyAlignment="1"><alignment horizontal="right"/></xf>
+    <xf numFmtId="164" fontId="6" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1" applyAlignment="1"><alignment horizontal="right"/></xf>
+    <xf numFmtId="164" fontId="0" fillId="3" borderId="0" xfId="0" applyNumberFormat="1" applyFill="1" applyAlignment="1"><alignment horizontal="right"/></xf>
+    <xf numFmtId="164" fontId="4" fillId="3" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="right"/></xf>
+    <xf numFmtId="164" fontId="5" fillId="3" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="right"/></xf>
+    <xf numFmtId="164" fontId="6" fillId="3" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="right"/></xf>
+    <xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="right"/></xf>
+    <xf numFmtId="165" fontId="0" fillId="3" borderId="0" xfId="0" applyNumberFormat="1" applyFill="1" applyAlignment="1"><alignment horizontal="right"/></xf>
+    <xf numFmtId="166" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="right"/></xf>
+    <xf numFmtId="166" fontId="0" fillId="3" borderId="0" xfId="0" applyNumberFormat="1" applyFill="1" applyAlignment="1"><alignment horizontal="right"/></xf>
+    <xf numFmtId="0"   fontId="3" fillId="5" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center"/></xf>
+    <xf numFmtId="0"   fontId="0" fillId="6" borderId="0" xfId="0" applyFill="1" applyAlignment="1"><alignment horizontal="center"/></xf>
+    <xf numFmtId="164" fontId="3" fillId="4" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="right"/></xf>
+    <xf numFmtId="165" fontId="3" fillId="4" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="right"/></xf>
+    <xf numFmtId="0"   fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="left"/></xf>
+    <xf numFmtId="0"   fontId="0" fillId="3" borderId="0" xfId="0" applyFill="1" applyAlignment="1"><alignment horizontal="left"/></xf>
+  </cellXfs>
+</styleSheet>`;
+
+    // Pick the right style index for a cell given its header name, row parity, and sheet type
+    function pickStyle(headerName, isEven, isTotalRow, cellValue) {
+        if (isTotalRow) {
+            if (['Transport Revenue','Storage Revenue','Total Revenue','Week Revenue','Month Revenue','Total Revenue'].includes(headerName)) return SX.TOTAL_CURRENCY;
+            if (['Total Assigned','Total Completed','Week Completed','Month Completed','Transport Orders','Storage Orders','Total Orders'].includes(headerName)) return SX.TOTAL_INTEGER;
+            return SX.TOTAL;
+        }
+        if (['Transport Revenue','Storage Revenue','Total Revenue','Week Revenue','Month Revenue'].includes(headerName)) {
+            if (headerName === 'Transport Revenue') return isEven ? SX.CURRENCY_BLUE_STRIPE   : SX.CURRENCY_BLUE;
+            if (headerName === 'Storage Revenue')   return isEven ? SX.CURRENCY_PURPLE_STRIPE : SX.CURRENCY_PURPLE;
+            return isEven ? SX.CURRENCY_GREEN_STRIPE : SX.CURRENCY_GREEN;
+        }
+        if (['Total Assigned','Total Completed','Week Completed','Month Completed','Transport Orders','Storage Orders','Total Orders'].includes(headerName)) {
+            return isEven ? SX.INTEGER_STRIPE : SX.INTEGER;
+        }
+        if (['Success Rate','Cancel Rate'].includes(headerName)) return isEven ? SX.PERCENT_STRIPE : SX.PERCENT;
+        if (headerName === 'Status') return cellValue === 'Online' ? SX.STATUS_ONLINE : SX.STATUS_OFFLINE;
+        if (['Period','Email','Customer Email','Driver Name'].includes(headerName)) return isEven ? SX.LEFT_STRIPE : SX.LEFT;
+        return isEven ? SX.STRIPE : SX.DEFAULT;
+    }
+
+    // Patch @s attributes on every <c> element in a sheet XML string
+    function applyStylesToSheetXml(sheetXml, ws) {
+        if (!ws['!ref']) return sheetXml;
+        const range = XLSX.utils.decode_range(ws['!ref']);
+        // Build header map: col index → header name
+        const headers = {};
+        for (let c = range.s.c; c <= range.e.c; c++) {
+            const ref = XLSX.utils.encode_cell({ r: range.s.r, c });
+            headers[c] = ws[ref]?.v || '';
+        }
+        const totalRows = range.e.r;
+
+        // Replace each <c r="XN" ...> tag, injecting or replacing s="N"
+        return sheetXml.replace(/<c r="([A-Z]+)(\d+)"([^>]*?)(\/>|>)/g, (match, col, rowStr, attrs, close) => {
+            const row = parseInt(rowStr) - 1; // 0-based
+            const colIdx = XLSX.utils.decode_col(col);
+            let sx;
+            if (row === range.s.r) {
+                sx = SX.HEADER;
+            } else {
+                const isEven = row % 2 === 0;
+                const isTotalRow = row === totalRows;
+                const headerName = headers[colIdx] || '';
+                // Get cell value for Status detection
+                const cellRef = XLSX.utils.encode_cell({ r: row, c: colIdx });
+                const cellVal = ws[cellRef]?.v ?? '';
+                sx = pickStyle(headerName, isEven, isTotalRow, cellVal);
+            }
+            // Remove existing s="..." and inject new one
+            const cleanAttrs = attrs.replace(/\s*s="\d+"/, '');
+            return `<c r="${col}${rowStr}" s="${sx}"${cleanAttrs}${close}`;
+        });
+    }
+
+    // Compute auto column widths from cell values
+    function computeColWidths(ws) {
+        if (!ws['!ref']) return [];
+        const range = XLSX.utils.decode_range(ws['!ref']);
+        const widths = [];
+        for (let c = range.s.c; c <= range.e.c; c++) {
+            let max = 8;
+            for (let r = range.s.r; r <= range.e.r; r++) {
+                const ref = XLSX.utils.encode_cell({ r, c });
+                const len = String(ws[ref]?.v ?? '').length;
+                if (len > max) max = len;
+            }
+            widths.push(Math.min(max + 2, 50));
+        }
+        return widths;
+    }
+
+    // Inject col widths into sheet XML
+    function applyColWidths(sheetXml, widths) {
+        const colsXml = '<cols>' + widths.map((w, i) =>
+            `<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`
+        ).join('') + '</cols>';
+        // Insert before <sheetData>
+        return sheetXml.replace('<sheetData>', colsXml + '<sheetData>');
+    }
+
     async function writeThemedXLSX(wb, filename) {
         try {
-            // Style header rows: purple background (accent1 = theme index 4), white text, bold
-            wb.SheetNames.forEach(sheetName => {
+            // Write plain data (no styles) — SheetJS free can't write styles anyway
+            const xlsxData = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+            const zip = await JSZip.loadAsync(xlsxData);
+
+            // Inject custom theme
+            zip.file('xl/theme/theme1.xml', LL_THEME_XML);
+
+            // Inject our full styles.xml
+            zip.file('xl/styles.xml', STYLES_XML);
+
+            // Patch each sheet's XML with style indices + col widths
+            for (const sheetName of wb.SheetNames) {
                 const ws = wb.Sheets[sheetName];
-                if (!ws || !ws['!ref']) return;
-                const range = XLSX.utils.decode_range(ws['!ref']);
-                for (let col = range.s.c; col <= range.e.c; col++) {
-                    const cellRef = XLSX.utils.encode_cell({ r: range.s.r, c: col });
-                    if (!ws[cellRef]) continue;
-                    ws[cellRef].s = {
-                        font: { bold: true, color: { rgb: 'FFFFFFFF' }, sz: 11, name: 'Segoe UI Semibold' },
-                        fill: { fgColor: { rgb: 'FF7C3AED' }, patternType: 'solid' },
-                        alignment: { horizontal: 'center', vertical: 'center' }
-                    };
-                }
-            });
-
-            // Generate raw xlsx bytes — cellStyles:true is REQUIRED for .s style objects to be written
-            const xlsxData = XLSX.write(wb, { type: 'array', bookType: 'xlsx', cellStyles: true });
-
-            // Inject custom theme via JSZip
-            if (typeof JSZip !== 'undefined') {
-                const zip = await JSZip.loadAsync(xlsxData);
-                zip.file('xl/theme/theme1.xml', LL_THEME_XML);
-                const blob = await zip.generateAsync({
-                    type: 'blob',
-                    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-                });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = filename;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-            } else {
-                XLSX.writeFile(wb, filename);
+                const sheetIndex = wb.SheetNames.indexOf(sheetName) + 1;
+                const sheetPath = `xl/worksheets/sheet${sheetIndex}.xml`;
+                let sheetXml = await zip.file(sheetPath).async('string');
+                sheetXml = applyStylesToSheetXml(sheetXml, ws);
+                const widths = computeColWidths(ws);
+                if (widths.length) sheetXml = applyColWidths(sheetXml, widths);
+                zip.file(sheetPath, sheetXml);
             }
+
+            const blob = await zip.generateAsync({
+                type: 'blob',
+                mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         } catch (e) {
-            console.error('Theme injection failed, falling back:', e);
+            console.error('writeThemedXLSX failed:', e);
             XLSX.writeFile(wb, filename);
         }
     }
@@ -836,7 +986,6 @@
                 const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, ws, 'Driver Earnings');
                 
-                autoColWidths(ws);
 
                 // Style data rows
                 const deRange = XLSX.utils.decode_range(ws['!ref'] || 'A1');
@@ -957,7 +1106,6 @@
                 const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
                 const isStorage = type === 'storage-orders';
                 
-                autoColWidths(ws);
                 
                 // Style data rows
                 for (let row = range.s.r + 1; row <= range.e.r; row++) {
@@ -1144,7 +1292,6 @@
                 const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, ws, 'Earnings Report');
                 
-                autoColWidths(ws);
                 
                 // Style data rows + highlight TOTAL row
                 const erRange = XLSX.utils.decode_range(ws['!ref'] || 'A1');
