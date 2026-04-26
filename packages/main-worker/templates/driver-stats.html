@@ -903,12 +903,16 @@
         return widths;
     }
 
-    // Inject col widths into sheet XML
+    // Inject col widths into sheet XML — replaces existing <cols> block if present
     function applyColWidths(sheetXml, widths) {
         const colsXml = '<cols>' + widths.map((w, i) =>
             `<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`
         ).join('') + '</cols>';
-        // Insert before <sheetData>
+        // Replace existing <cols>...</cols> if SheetJS already wrote one
+        if (sheetXml.includes('<cols>')) {
+            return sheetXml.replace(/<cols>[\s\S]*?<\/cols>/, colsXml);
+        }
+        // Otherwise insert before <sheetData>
         return sheetXml.replace('<sheetData>', colsXml + '<sheetData>');
     }
 
@@ -987,57 +991,6 @@
                 XLSX.utils.book_append_sheet(wb, ws, 'Driver Earnings');
                 
 
-                // Style data rows
-                const deRange = XLSX.utils.decode_range(ws['!ref'] || 'A1');
-                for (let row = deRange.s.r + 1; row <= deRange.e.r; row++) {
-                    const isEven = row % 2 === 0;
-                    for (let col = deRange.s.c; col <= deRange.e.c; col++) {
-                        const cellRef = XLSX.utils.encode_cell({ r: row, c: col });
-                        if (!ws[cellRef]) continue;
-                        const headerRef = XLSX.utils.encode_cell({ r: deRange.s.r, c: col });
-                        const headerName = ws[headerRef]?.v || '';
-                        const style = { font: { name: 'Segoe UI', sz: 10 } };
-
-                        // Alternating stripe
-                        if (isEven) {
-                            style.fill = { fgColor: { rgb: 'FFF8FAFC' }, patternType: 'solid' };
-                        }
-
-                        // Revenue columns — currency, right-aligned
-                        if (['Total Revenue', 'Week Revenue', 'Month Revenue'].includes(headerName)) {
-                            style.alignment = { horizontal: 'right', vertical: 'center' };
-                            style.numFmt = '$#,##0.00';
-                        }
-
-                        // Count columns — integer, right-aligned
-                        if (['Total Assigned', 'Total Completed', 'Week Completed', 'Month Completed'].includes(headerName)) {
-                            style.alignment = { horizontal: 'right', vertical: 'center' };
-                            style.numFmt = '#,##0';
-                        }
-
-                        // Percentage columns
-                        if (['Success Rate', 'Cancel Rate'].includes(headerName)) {
-                            style.alignment = { horizontal: 'right', vertical: 'center' };
-                            style.numFmt = '0.0%';
-                        }
-
-                        // Status — coloured badge
-                        if (headerName === 'Status') {
-                            const isOnline = ws[cellRef].v === 'Online';
-                            style.fill = { fgColor: { rgb: isOnline ? 'FFD1FAE5' : 'FFF1F5F9' }, patternType: 'solid' };
-                            style.font = { name: 'Segoe UI', sz: 10, bold: true, color: { rgb: isOnline ? 'FF065F46' : 'FF475569' } };
-                            style.alignment = { horizontal: 'center', vertical: 'center' };
-                        }
-
-                        // Email — left-aligned
-                        if (headerName === 'Email') {
-                            style.alignment = { horizontal: 'left', vertical: 'center' };
-                        }
-
-                        ws[cellRef].s = style;
-                    }
-                }
-
                 writeThemedXLSX(wb, `driver-earnings-summary-${new Date().toISOString().split('T')[0]}.xlsx`);
             } else {
                 // CSV format
@@ -1106,65 +1059,6 @@
                 const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
                 const isStorage = type === 'storage-orders';
                 
-                
-                // Style data rows
-                for (let row = range.s.r + 1; row <= range.e.r; row++) {
-                    const isEven = row % 2 === 0;
-                    
-                    for (let col = range.s.c; col <= range.e.c; col++) {
-                        const cellRef = XLSX.utils.encode_cell({ r: row, c: col });
-                        if (!ws[cellRef]) continue;
-                        
-                        const headerRef = XLSX.utils.encode_cell({ r: range.s.r, c: col });
-                        const headerName = ws[headerRef]?.v || '';
-                        
-                        // Base style
-                        const style = { font: { name: 'Segoe UI', sz: 10 } };
-                        
-                        // Alternating row striping (subtle slate-50)
-                        if (isEven) {
-                            style.fill = { fgColor: { rgb: 'FFF8FAFC' }, patternType: 'solid' };
-                        }
-                        
-                        // Status column — colored badge
-                        if (headerName === 'Status') {
-                            const statusStyle = getStatusStyle(ws[cellRef].v);
-                            Object.assign(style, statusStyle);
-                            style.alignment = { horizontal: 'center', vertical: 'center' };
-                        }
-                        
-                        // Price — currency format, right aligned
-                        if (headerName === 'Price') {
-                            style.alignment = { horizontal: 'right', vertical: 'center' };
-                            style.numFmt = '$#,##0.00';
-                        }
-                        
-                        // Numeric counters — right aligned
-                        if (['Storage Days', 'Total Bags', 'Transport Orders', 'Storage Orders', 'Total Orders'].includes(headerName)) {
-                            style.alignment = { horizontal: 'right', vertical: 'center' };
-                            style.numFmt = '#,##0';
-                        }
-                        
-                        // Percentage columns
-                        if (['Success Rate', 'Cancel Rate'].includes(headerName)) {
-                            style.alignment = { horizontal: 'right', vertical: 'center' };
-                            style.numFmt = '0.0%';
-                        }
-                        
-                        // Date columns — ISO-like format
-                        if (['Created At', 'Picked Up At', 'Delivered At'].includes(headerName)) {
-                            style.alignment = { horizontal: 'left', vertical: 'center' };
-                            style.numFmt = 'yyyy-mm-dd hh:mm';
-                        }
-                        
-                        // Email — left aligned
-                        if (['Customer Email', 'Email'].includes(headerName)) {
-                            style.alignment = { horizontal: 'left', vertical: 'center' };
-                        }
-                        
-                        ws[cellRef].s = style;
-                    }
-                }
                 
                 writeThemedXLSX(wb, `${type}-${new Date().toISOString().split('T')[0]}.xlsx`);
             } else {
@@ -1293,52 +1187,6 @@
                 XLSX.utils.book_append_sheet(wb, ws, 'Earnings Report');
                 
                 
-                // Style data rows + highlight TOTAL row
-                const erRange = XLSX.utils.decode_range(ws['!ref'] || 'A1');
-                for (let row = erRange.s.r + 1; row <= erRange.e.r; row++) {
-                    const isEven = row % 2 === 0;
-                    const isTotalRow = row === erRange.e.r && currentEarningsTotals;
-                    for (let col = erRange.s.c; col <= erRange.e.c; col++) {
-                        const cellRef = XLSX.utils.encode_cell({ r: row, c: col });
-                        if (!ws[cellRef]) continue;
-                        const headerRef = XLSX.utils.encode_cell({ r: erRange.s.r, c: col });
-                        const headerName = ws[headerRef]?.v || '';
-                        const style = { font: { name: 'Segoe UI', sz: 10 } };
-
-                        // TOTAL row — bold with slate highlight
-                        if (isTotalRow) {
-                            style.fill = { fgColor: { rgb: 'FFE2E8F0' }, patternType: 'solid' };
-                            style.font = { name: 'Segoe UI', sz: 10, bold: true };
-                        } else if (isEven) {
-                            style.fill = { fgColor: { rgb: 'FFF8FAFC' }, patternType: 'solid' };
-                        }
-
-                        // Revenue columns — currency, right-aligned + colour-coded
-                        if (['Transport Revenue', 'Storage Revenue', 'Total Revenue'].includes(headerName)) {
-                            style.alignment = { horizontal: 'right', vertical: 'center' };
-                            style.numFmt = '$#,##0.00';
-                            if (!isTotalRow) {
-                                if (headerName === 'Transport Revenue') style.font = { ...style.font, color: { rgb: 'FF1D4ED8' } };
-                                if (headerName === 'Storage Revenue')   style.font = { ...style.font, color: { rgb: 'FF7C3AED' } };
-                                if (headerName === 'Total Revenue')     style.font = { ...style.font, color: { rgb: 'FF065F46' }, bold: true };
-                            }
-                        }
-
-                        // Order count columns — integer, right-aligned
-                        if (['Transport Orders', 'Storage Orders', 'Total Orders'].includes(headerName)) {
-                            style.alignment = { horizontal: 'right', vertical: 'center' };
-                            style.numFmt = '#,##0';
-                        }
-
-                        // Period — left-aligned
-                        if (headerName === 'Period') {
-                            style.alignment = { horizontal: 'left', vertical: 'center' };
-                        }
-
-                        ws[cellRef].s = style;
-                    }
-                }
-
                 const type = document.getElementById('earnings-report-type').value;
                 writeThemedXLSX(wb, `earnings-report-${type}-${new Date().toISOString().split('T')[0]}.xlsx`);
             } else {
