@@ -652,6 +652,24 @@
       setTimeout(() => div.remove(), 3000);
     }
 
+    // Auto-fit column widths to the longest value in each column (header or data)
+    function autoColWidths(ws, minWidth = 8, maxWidth = 60) {
+        if (!ws["!ref"]) return;
+        const range = XLSX.utils.decode_range(ws["!ref"]);
+        const widths = [];
+        for (let col = range.s.c; col <= range.e.c; col++) {
+            let max = minWidth;
+            for (let row = range.s.r; row <= range.e.r; row++) {
+                const cell = ws[XLSX.utils.encode_cell({ r: row, c: col })];
+                if (!cell) continue;
+                const len = String(cell.v ?? "").length;
+                if (len > max) max = len;
+            }
+            widths.push({ wch: Math.min(max + 2, maxWidth) });
+        }
+        ws["!cols"] = widths;
+    }
+
     // LuggageLink Revenue Theme XML (injected into generated XLSX files)
     const LL_THEME_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="LuggageLink Revenue">
@@ -758,8 +776,8 @@
                 }
             });
 
-            // Generate raw xlsx bytes
-            const xlsxData = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+            // Generate raw xlsx bytes — cellStyles:true is REQUIRED for .s style objects to be written
+            const xlsxData = XLSX.write(wb, { type: 'array', bookType: 'xlsx', cellStyles: true });
 
             // Inject custom theme via JSZip
             if (typeof JSZip !== 'undefined') {
@@ -818,13 +836,7 @@
                 const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, ws, 'Driver Earnings');
                 
-                // Auto-width columns
-                const colWidths = [
-                    { wch: 20 }, { wch: 30 }, { wch: 14 }, { wch: 15 },
-                    { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 14 },
-                    { wch: 13 }, { wch: 12 }, { wch: 10 }, { wch: 10 }
-                ];
-                ws['!cols'] = colWidths;
+                autoColWidths(ws);
 
                 // Style data rows
                 const deRange = XLSX.utils.decode_range(ws['!ref'] || 'A1');
@@ -945,16 +957,7 @@
                 const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
                 const isStorage = type === 'storage-orders';
                 
-                // Column widths tailored to each sheet type
-                ws['!cols'] = isStorage
-                    ? [
-                        { wch: 24 }, { wch: 20 }, { wch: 14 }, { wch: 22 }, { wch: 30 },
-                        { wch: 16 }, { wch: 12 }, { wch: 13 }, { wch: 12 }, { wch: 22 }, { wch: 20 }
-                      ]
-                    : [
-                        { wch: 24 }, { wch: 20 }, { wch: 14 }, { wch: 22 }, { wch: 30 },
-                        { wch: 16 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 22 }, { wch: 20 }
-                      ];
+                autoColWidths(ws);
                 
                 // Style data rows
                 for (let row = range.s.r + 1; row <= range.e.r; row++) {
@@ -1141,11 +1144,7 @@
                 const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, ws, 'Earnings Report');
                 
-                // Auto-width
-                ws['!cols'] = [
-                    { wch: 12 }, { wch: 16 }, { wch: 16 }, { wch: 16 },
-                    { wch: 16 }, { wch: 16 }, { wch: 12 }
-                ];
+                autoColWidths(ws);
                 
                 // Style data rows + highlight TOTAL row
                 const erRange = XLSX.utils.decode_range(ws['!ref'] || 'A1');
