@@ -1,6 +1,6 @@
-# Main Operations Console Worker
+# Main Operations Console Worker (Demo)
 
-name = 'luggster-ops'
+name = 'ops-demo'
 main = 'src/index.ts'
 compatibility_date = '2024-01-01'
 compatibility_flags = ['nodejs_compat']
@@ -29,14 +29,14 @@ JWT_EXPIRY_HOURS = '24'
 
 # Environment-specific configuration
 [env.staging]
-name = 'luggster-ops-staging'
+name = 'ops-demo-staging'
 workers_dev = true
 
 [env.production]
-name = 'luggster-ops'
-workers_dev = true  # Using workers.dev domain: luggster-ops.constance-api.workers.dev
+name = 'ops-demo'
+workers_dev = true
 
 # For local development/testing
 [env.development]
-name = 'luggster-ops-dev'
+name = 'ops-demo-dev'
 workers_dev = true
