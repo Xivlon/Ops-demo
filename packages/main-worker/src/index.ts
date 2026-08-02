@@ -1,7 +1,7 @@
 import { Pool } from '@neondatabase/serverless';
 import type { ExportedHandler } from '@cloudflare/workers-types';
 import type { Env, LoginRequest, ApiResponse } from '../../../shared/types';
-import { createRepositories } from '../../../shared/repositories';
+import { createRepositories, createMockRepositories } from '../../../shared/repositories';
 import { authMiddleware, validatePin, requireRole, getRole } from '../../../shared/utils/auth';
 import { createJWT, verifyJWT, extractJWT } from '../../../shared/utils/jwt';
 import {
@@ -16,19 +16,22 @@ import {
   DASHBOARD_HTML,
   DRIVER_STATS_HTML,
   LOGIN_HTML,
-  LOADING_HTML,
   STORAGE_HTML,
 } from './generated/html-templates';
 
 // Configuration for driver stats worker
 const DEFAULT_DRIVER_STATS_WORKER_URL = 'https://driver-stats.constance-api.workers.dev';
-const USE_DRIVER_STATS_WORKER = true; // Set to false to use direct queries
 const DRIVER_STATS_TIMEOUT_MS = 10000; // 10 second timeout for proxy requests
 
 // Configuration for storage worker
 const DEFAULT_STORAGE_WORKER_URL = 'https://storage.constance-api.workers.dev';
-const USE_STORAGE_WORKER = true; // Set to false to disable storage worker and use direct queries
 const STORAGE_TIMEOUT_MS = 10000; // 10 second timeout for proxy requests
+
+// When no DATABASE_URL is configured, run entirely on in-memory mock data
+// and bypass the separate driver-stats / storage workers.
+function useWorkerProxies(env: Env): boolean {
+  return !!env.DATABASE_URL;
+}
 
 // Simple in-memory rate limiter for login (per-IP, resets on worker restart)
 interface RateLimitEntry { count: number; resetAt: number }
@@ -78,12 +81,12 @@ async function testConnection(pool: Pool): Promise<boolean> {
 
 // Helper to proxy requests to driver stats worker
 async function proxyToDriverStatsWorker(
-  endpoint: string, 
+  endpoint: string,
   origin: string | null,
   request: Request,
   env: Env
 ): Promise<Response> {
-  if (!USE_DRIVER_STATS_WORKER) {
+  if (!useWorkerProxies(env)) {
     throw new Error('Driver stats worker not enabled');
   }
 
@@ -136,14 +139,14 @@ async function proxyToDriverStatsWorker(
 
 // Helper to proxy requests to storage worker
 async function proxyToStorageWorker(
-  endpoint: string, 
-  method: string, 
-  body: unknown | null, 
+  endpoint: string,
+  method: string,
+  body: unknown | null,
   origin: string | null,
   request: Request,
   env: Env
 ): Promise<Response> {
-  if (!USE_STORAGE_WORKER) {
+  if (!useWorkerProxies(env)) {
     throw new Error('Storage worker not enabled');
   }
 
@@ -215,22 +218,35 @@ const worker: ExportedHandler<Env> = {
 
     // Connection health check endpoint
     if (path === '/health' && method === 'GET') {
+      if (!env.DATABASE_URL) {
+        return jsonResponse({
+          success: true,
+          data: {
+            connected: true,
+            mockMode: true,
+            message: 'Running with in-memory mock data (no database)',
+            driverStatsWorkerEnabled: false,
+            storageWorkerEnabled: false
+          }
+        }, 200, true, origin);
+      }
+
       try {
         const pool = createPool(env);
         const isConnected = await testConnection(pool);
-        await pool.end(); // Close pool after health check
-        return jsonResponse({ 
-          success: true, 
-          data: { 
+        if (pool) { await pool.end(); } // Close pool after health check
+        return jsonResponse({
+          success: true,
+          data: {
             connected: isConnected,
             message: 'Database connection OK',
-            driverStatsWorkerEnabled: USE_DRIVER_STATS_WORKER,
-            storageWorkerEnabled: USE_STORAGE_WORKER
+            driverStatsWorkerEnabled: useWorkerProxies(env),
+            storageWorkerEnabled: useWorkerProxies(env)
           }
         }, 200, true, origin);
       } catch (error) {
-        return jsonResponse({ 
-          success: false, 
+        return jsonResponse({
+          success: false,
           error: 'Database connection failed'
         }, 503, true, origin);
       }
@@ -247,10 +263,14 @@ const worker: ExportedHandler<Env> = {
 
     // Initialize repositories for this request
     let repos;
-    let pool;
+    let pool: Pool | undefined;
     try {
-      pool = createPool(env);
-      repos = createRepositories(pool);
+      if (env.DATABASE_URL) {
+        pool = createPool(env);
+        repos = createRepositories(pool);
+      } else {
+        repos = createMockRepositories();
+      }
     } catch (e) {
       const error = e instanceof Error ? e.message : 'Database connection failed';
       console.error('Repository initialization error:', error);
@@ -262,7 +282,7 @@ const worker: ExportedHandler<Env> = {
       if (path === '/test' && method === 'GET') {
         const start = Date.now();
         const result = await repos.shipments.getDashboardStats(1);
-        await pool.end(); // Close pool after request
+        if (pool) { await pool.end(); } // Close pool after request
         return jsonResponse({
           success: true,
           data: { connected: true, latencyMs: Date.now() - start, stats: result },
@@ -273,10 +293,10 @@ const worker: ExportedHandler<Env> = {
       if (path === '/api/me' && method === 'GET') {
         const role = getRole(request);
         if (!role) {
-          await pool.end();
+          if (pool) { await pool.end(); }
           return unauthorizedResponse();
         }
-        await pool.end();
+        if (pool) { await pool.end(); }
         return jsonResponse({ success: true, data: { role } }, 200, true, origin);
       }
 
@@ -284,7 +304,7 @@ const worker: ExportedHandler<Env> = {
       if (path === '/api/login' && method === 'POST') {
         const clientIP = request.headers.get('CF-Connecting-IP') || 'unknown';
         if (!checkRateLimit(clientIP)) {
-          await pool.end();
+          if (pool) { await pool.end(); }
           return errorResponse('Too many login attempts. Try again in 15 minutes.', 'RATE_LIMITED', 429);
         }
 
@@ -292,7 +312,7 @@ const worker: ExportedHandler<Env> = {
         
         const role = await validatePin(body.pin, env);
         if (!role) {
-          await pool.end();
+          if (pool) { await pool.end(); }
           return errorResponse('Invalid PIN', 'INVALID_PIN', 401);
         }
 
@@ -308,7 +328,7 @@ const worker: ExportedHandler<Env> = {
         const expiryHours = parseInt(env.JWT_EXPIRY_HOURS || '24', 10);
         response.headers.set('Set-Cookie', `token=${jwt}; HttpOnly; Secure; SameSite=Strict; Max-Age=${expiryHours * 3600}; Path=/`);
         
-        await pool.end(); // Close pool after request
+        if (pool) { await pool.end(); } // Close pool after request
         return response;
       }
 
@@ -321,24 +341,24 @@ const worker: ExportedHandler<Env> = {
           origin
         );
         response.headers.set('Set-Cookie', clearJWTCookie());
-        await pool.end(); // Close pool after request
+        if (pool) { await pool.end(); } // Close pool after request
         return response;
       }
 
       // Dashboard stats (admin + transport)
       if (path === '/api/dashboard/stats' && method === 'GET') {
         const roleCheck = requireRole(request, ['admin', 'transport']);
-        if (roleCheck) { await pool.end(); return roleCheck; }
+        if (roleCheck) { if (pool) { await pool.end(); } return roleCheck; }
         
         const stats = await repos.shipments.getDashboardStats();
-        await pool.end(); // Close pool after request
+        if (pool) { await pool.end(); } // Close pool after request
         return jsonResponse({ success: true, data: stats }, 200, true, origin);
       }
 
       // Shipments list (admin + transport)
       if (path === '/api/shipments' && method === 'GET') {
         const roleCheck = requireRole(request, ['admin', 'transport']);
-        if (roleCheck) { await pool.end(); return roleCheck; }
+        if (roleCheck) { if (pool) { await pool.end(); } return roleCheck; }
         
         const status = url.searchParams.get('status') as any;
         const limit = parseInt(url.searchParams.get('limit') || '100', 10);
@@ -349,7 +369,7 @@ const worker: ExportedHandler<Env> = {
           limit, 
           days 
         });
-        await pool.end(); // Close pool after request
+        if (pool) { await pool.end(); } // Close pool after request
         return jsonResponse({ success: true, data: shipments }, 200, true, origin);
       }
 
@@ -357,24 +377,24 @@ const worker: ExportedHandler<Env> = {
       const assignMatch = path.match(/^\/api\/shipments\/([^/]+)\/assign$/);
       if (assignMatch && method === 'POST') {
         const roleCheck = requireRole(request, ['admin', 'transport']);
-        if (roleCheck) { await pool.end(); return roleCheck; }
+        if (roleCheck) { if (pool) { await pool.end(); } return roleCheck; }
         
         const shipmentId = assignMatch[1];
         const body = await request.json() as { driverId: string };
         
         if (!body.driverId) {
-          await pool.end();
+          if (pool) { await pool.end(); }
           return errorResponse('driverId is required', 'MISSING_DRIVER_ID', 400);
         }
 
         const success = await repos.shipments.assignDriver(shipmentId, body.driverId);
         
         if (!success) {
-          await pool.end();
+          if (pool) { await pool.end(); }
           return errorResponse('Failed to assign driver', 'ASSIGN_FAILED', 400);
         }
 
-        await pool.end(); // Close pool after request
+        if (pool) { await pool.end(); } // Close pool after request
         return jsonResponse({ success: true, data: { message: 'Driver assigned' } }, 200, true, origin);
       }
 
@@ -382,18 +402,18 @@ const worker: ExportedHandler<Env> = {
       const cancelMatch = path.match(/^\/api\/shipments\/([^/]+)\/cancel$/);
       if (cancelMatch && method === 'POST') {
         const roleCheck = requireRole(request, ['admin', 'transport']);
-        if (roleCheck) { await pool.end(); return roleCheck; }
+        if (roleCheck) { if (pool) { await pool.end(); } return roleCheck; }
         
         const shipmentId = cancelMatch[1];
         
         const success = await repos.shipments.cancel(shipmentId);
         
         if (!success) {
-          await pool.end();
+          if (pool) { await pool.end(); }
           return errorResponse('Failed to cancel order - may already be delivered, cancelled, or not found', 'CANCEL_FAILED', 400);
         }
 
-        await pool.end(); // Close pool after request
+        if (pool) { await pool.end(); } // Close pool after request
         return jsonResponse({ success: true, data: { message: 'Order cancelled', bknd: true } }, 200, true, origin);
       }
 
@@ -402,12 +422,12 @@ const worker: ExportedHandler<Env> = {
       // Drivers list - try proxy first, fallback to direct (admin + transport)
       if (path === '/api/drivers' && method === 'GET') {
         const roleCheck = requireRole(request, ['admin', 'transport']);
-        if (roleCheck) { await pool.end(); return roleCheck; }
+        if (roleCheck) { if (pool) { await pool.end(); } return roleCheck; }
         
-        if (USE_DRIVER_STATS_WORKER) {
+        if (useWorkerProxies(env)) {
           try {
             const response = await proxyToDriverStatsWorker('/api/drivers', origin, request, env);
-            await pool.end(); // Close pool before returning
+            if (pool) { await pool.end(); } // Close pool before returning
             return response;
           } catch (proxyError) {
             console.log('Proxy failed, falling back to direct query:', proxyError);
@@ -416,19 +436,19 @@ const worker: ExportedHandler<Env> = {
         }
         // Fallback to direct query
         const drivers = await repos.drivers.listAll();
-        await pool.end(); // Close pool after request
+        if (pool) { await pool.end(); } // Close pool after request
         return jsonResponse({ success: true, data: drivers }, 200, true, origin);
       }
 
       // Online drivers - try proxy first, fallback to direct (admin + transport)
       if (path === '/api/drivers/online' && method === 'GET') {
         const roleCheck = requireRole(request, ['admin', 'transport']);
-        if (roleCheck) { await pool.end(); return roleCheck; }
+        if (roleCheck) { if (pool) { await pool.end(); } return roleCheck; }
         
-        if (USE_DRIVER_STATS_WORKER) {
+        if (useWorkerProxies(env)) {
           try {
             const response = await proxyToDriverStatsWorker('/api/drivers/online', origin, request, env);
-            await pool.end(); // Close pool before returning
+            if (pool) { await pool.end(); } // Close pool before returning
             return response;
           } catch (proxyError) {
             console.log('Proxy failed, falling back to direct query:', proxyError);
@@ -437,18 +457,18 @@ const worker: ExportedHandler<Env> = {
         }
         // Fallback to direct query
         const drivers = await repos.drivers.listOnline();
-        await pool.end(); // Close pool after request
+        if (pool) { await pool.end(); } // Close pool after request
         return jsonResponse({ success: true, data: drivers }, 200, true, origin);
       }
 
       // Get driver stats from driver_stats table only (no calculations) (admin + transport)
       if (path === '/api/drivers/stats' && method === 'GET') {
         const roleCheck = requireRole(request, ['admin', 'transport']);
-        if (roleCheck) { await pool.end(); return roleCheck; }
+        if (roleCheck) { if (pool) { await pool.end(); } return roleCheck; }
         
         try {
           const stats = await repos.drivers.getCachedStats();
-          await pool.end();
+          if (pool) { await pool.end(); }
           return jsonResponse({
             success: true,
             data: stats,
@@ -460,7 +480,7 @@ const worker: ExportedHandler<Env> = {
           }, 200, true, origin);
         } catch (error) {
           console.error('Driver stats error:', error);
-          await pool.end();
+          if (pool) { await pool.end(); }
           return errorResponse('Failed to load driver stats', 'DRIVER_STATS_ERROR', 500);
         }
       }
@@ -468,11 +488,11 @@ const worker: ExportedHandler<Env> = {
       // Get total revenue from shipments table (calculated from price_cents) (admin only)
       if (path === '/api/drivers/revenue' && method === 'GET') {
         const roleCheck = requireRole(request, ['admin']);
-        if (roleCheck) { await pool.end(); return roleCheck; }
+        if (roleCheck) { if (pool) { await pool.end(); } return roleCheck; }
         
         try {
           const totalRevenue = await repos.drivers.getTotalRevenue();
-          await pool.end();
+          if (pool) { await pool.end(); }
           return jsonResponse({
             success: true,
             data: { total_revenue: totalRevenue },
@@ -483,7 +503,7 @@ const worker: ExportedHandler<Env> = {
           }, 200, true, origin);
         } catch (error) {
           console.error('Revenue error:', error);
-          await pool.end();
+          if (pool) { await pool.end(); }
           return errorResponse('Failed to load revenue', 'REVENUE_ERROR', 500);
         }
       }
@@ -491,20 +511,20 @@ const worker: ExportedHandler<Env> = {
       // Enhanced driver stats endpoint (only available via worker) (admin + transport)
       if (path === '/api/drivers/stats/enhanced' && method === 'GET') {
         const roleCheck = requireRole(request, ['admin', 'transport']);
-        if (roleCheck) { await pool.end(); return roleCheck; }
+        if (roleCheck) { if (pool) { await pool.end(); } return roleCheck; }
         
-        if (USE_DRIVER_STATS_WORKER) {
+        if (useWorkerProxies(env)) {
           try {
             const response = await proxyToDriverStatsWorker('/api/drivers/stats/enhanced', origin, request, env);
-            await pool.end(); // Close pool before returning
+            if (pool) { await pool.end(); } // Close pool before returning
             return response;
           } catch (proxyError) {
             console.log('Enhanced stats proxy failed:', proxyError);
-            await pool.end();
+            if (pool) { await pool.end(); }
             return errorResponse('Enhanced stats not available', 'ENHANCED_STATS_UNAVAILABLE', 503);
           }
         }
-        await pool.end();
+        if (pool) { await pool.end(); }
         return errorResponse('Enhanced stats require driver stats worker', 'WORKER_REQUIRED', 400);
       }
 
@@ -513,12 +533,12 @@ const worker: ExportedHandler<Env> = {
       // Storage list - try proxy first if enabled, fallback to direct (admin + storage)
       if (path === '/api/storage' && method === 'GET') {
         const roleCheck = requireRole(request, ['admin', 'storage']);
-        if (roleCheck) { await pool.end(); return roleCheck; }
-        if (USE_STORAGE_WORKER) {
+        if (roleCheck) { if (pool) { await pool.end(); } return roleCheck; }
+        if (useWorkerProxies(env)) {
           try {
             const queryString = url.search;
             const response = await proxyToStorageWorker(`/api/storage${queryString}`, 'GET', null, origin, request, env);
-            await pool.end();
+            if (pool) { await pool.end(); }
             return response;
           } catch (proxyError) {
             console.log('Storage worker proxy failed, falling back to direct:', proxyError);
@@ -535,19 +555,19 @@ const worker: ExportedHandler<Env> = {
           limit, 
           days 
         });
-        await pool.end();
+        if (pool) { await pool.end(); }
         return jsonResponse({ success: true, data: storage }, 200, true, origin);
       }
 
       // Storage stats - try proxy first if enabled, fallback to direct (admin + storage)
       if (path === '/api/storage/stats' && method === 'GET') {
         const roleCheck = requireRole(request, ['admin', 'storage']);
-        if (roleCheck) { await pool.end(); return roleCheck; }
-        if (USE_STORAGE_WORKER) {
+        if (roleCheck) { if (pool) { await pool.end(); } return roleCheck; }
+        if (useWorkerProxies(env)) {
           try {
             const queryString = url.search;
             const response = await proxyToStorageWorker(`/api/storage/stats${queryString}`, 'GET', null, origin, request, env);
-            await pool.end();
+            if (pool) { await pool.end(); }
             return response;
           } catch (proxyError) {
             console.log('Storage stats proxy failed, falling back to direct:', proxyError);
@@ -557,7 +577,7 @@ const worker: ExportedHandler<Env> = {
         // Fallback to direct query
         const days = parseInt(url.searchParams.get('days') || '30', 10);
         const stats = await repos.storage.getStorageStats(days);
-        await pool.end();
+        if (pool) { await pool.end(); }
         return jsonResponse({ success: true, data: stats }, 200, true, origin);
       }
 
@@ -565,16 +585,16 @@ const worker: ExportedHandler<Env> = {
       const assignPickupMatch = path.match(/^\/api\/storage\/([^/]+)\/assign-pickup$/);
       if (assignPickupMatch && method === 'POST') {
         const roleCheck = requireRole(request, ['admin', 'storage']);
-        if (roleCheck) { await pool.end(); return roleCheck; }
+        if (roleCheck) { if (pool) { await pool.end(); } return roleCheck; }
         const storageId = assignPickupMatch[1];
         const body = await request.json() as { driverId: string };
         
         if (!body.driverId) {
-          await pool.end();
+          if (pool) { await pool.end(); }
           return errorResponse('driverId is required', 'MISSING_DRIVER_ID', 400);
         }
 
-        if (USE_STORAGE_WORKER) {
+        if (useWorkerProxies(env)) {
           try {
             const response = await proxyToStorageWorker(
               `/api/storage/${storageId}/assign-pickup`, 
@@ -584,7 +604,7 @@ const worker: ExportedHandler<Env> = {
               request,
               env
             );
-            await pool.end();
+            if (pool) { await pool.end(); }
             return response;
           } catch (proxyError) {
             console.log('Assign pickup proxy failed, falling back to direct:', proxyError);
@@ -595,11 +615,11 @@ const worker: ExportedHandler<Env> = {
         const success = await repos.storage.assignPickupDriver(storageId, body.driverId);
         
         if (!success) {
-          await pool.end();
+          if (pool) { await pool.end(); }
           return errorResponse('Failed to assign pickup driver', 'ASSIGN_FAILED', 400);
         }
 
-        await pool.end();
+        if (pool) { await pool.end(); }
         return jsonResponse({ success: true, data: { message: 'Pickup driver assigned' } }, 200, true, origin);
       }
 
@@ -607,16 +627,16 @@ const worker: ExportedHandler<Env> = {
       const assignDeliveryMatch = path.match(/^\/api\/storage\/([^/]+)\/assign-delivery$/);
       if (assignDeliveryMatch && method === 'POST') {
         const roleCheck = requireRole(request, ['admin', 'storage']);
-        if (roleCheck) { await pool.end(); return roleCheck; }
+        if (roleCheck) { if (pool) { await pool.end(); } return roleCheck; }
         const storageId = assignDeliveryMatch[1];
         const body = await request.json() as { driverId: string };
         
         if (!body.driverId) {
-          await pool.end();
+          if (pool) { await pool.end(); }
           return errorResponse('driverId is required', 'MISSING_DRIVER_ID', 400);
         }
 
-        if (USE_STORAGE_WORKER) {
+        if (useWorkerProxies(env)) {
           try {
             const response = await proxyToStorageWorker(
               `/api/storage/${storageId}/assign-delivery`, 
@@ -626,7 +646,7 @@ const worker: ExportedHandler<Env> = {
               request,
               env
             );
-            await pool.end();
+            if (pool) { await pool.end(); }
             return response;
           } catch (proxyError) {
             console.log('Assign delivery proxy failed, falling back to direct:', proxyError);
@@ -637,11 +657,11 @@ const worker: ExportedHandler<Env> = {
         const success = await repos.storage.assignDeliveryDriver(storageId, body.driverId);
         
         if (!success) {
-          await pool.end();
+          if (pool) { await pool.end(); }
           return errorResponse('Failed to assign delivery driver', 'ASSIGN_FAILED', 400);
         }
 
-        await pool.end();
+        if (pool) { await pool.end(); }
         return jsonResponse({ success: true, data: { message: 'Delivery driver assigned' } }, 200, true, origin);
       }
 
@@ -649,10 +669,10 @@ const worker: ExportedHandler<Env> = {
       const confirmPickupMatch = path.match(/^\/api\/storage\/([^/]+)\/confirm-pickup$/);
       if (confirmPickupMatch && method === 'POST') {
         const roleCheck = requireRole(request, ['admin', 'storage']);
-        if (roleCheck) { await pool.end(); return roleCheck; }
+        if (roleCheck) { if (pool) { await pool.end(); } return roleCheck; }
         const storageId = confirmPickupMatch[1];
 
-        if (USE_STORAGE_WORKER) {
+        if (useWorkerProxies(env)) {
           try {
             const response = await proxyToStorageWorker(
               `/api/storage/${storageId}/confirm-pickup`, 
@@ -662,7 +682,7 @@ const worker: ExportedHandler<Env> = {
               request,
               env
             );
-            await pool.end();
+            if (pool) { await pool.end(); }
             return response;
           } catch (proxyError) {
             console.log('Confirm pickup proxy failed, falling back to direct:', proxyError);
@@ -673,11 +693,11 @@ const worker: ExportedHandler<Env> = {
         const success = await repos.storage.confirmPickup(storageId);
         
         if (!success) {
-          await pool.end();
+          if (pool) { await pool.end(); }
           return errorResponse('Failed to confirm pickup - order may not be in pending status', 'CONFIRM_FAILED', 400);
         }
 
-        await pool.end();
+        if (pool) { await pool.end(); }
         return jsonResponse({ success: true, data: { message: 'Pickup confirmed' } }, 200, true, origin);
       }
 
@@ -685,10 +705,10 @@ const worker: ExportedHandler<Env> = {
       const confirmDropoffMatch = path.match(/^\/api\/storage\/([^/]+)\/confirm-dropoff$/);
       if (confirmDropoffMatch && method === 'POST') {
         const roleCheck = requireRole(request, ['admin', 'storage']);
-        if (roleCheck) { await pool.end(); return roleCheck; }
+        if (roleCheck) { if (pool) { await pool.end(); } return roleCheck; }
         const storageId = confirmDropoffMatch[1];
 
-        if (USE_STORAGE_WORKER) {
+        if (useWorkerProxies(env)) {
           try {
             const response = await proxyToStorageWorker(
               `/api/storage/${storageId}/confirm-dropoff`, 
@@ -698,7 +718,7 @@ const worker: ExportedHandler<Env> = {
               request,
               env
             );
-            await pool.end();
+            if (pool) { await pool.end(); }
             return response;
           } catch (proxyError) {
             console.log('Confirm dropoff proxy failed, falling back to direct:', proxyError);
@@ -709,11 +729,11 @@ const worker: ExportedHandler<Env> = {
         const success = await repos.storage.confirmDropoff(storageId);
         
         if (!success) {
-          await pool.end();
+          if (pool) { await pool.end(); }
           return errorResponse('Failed to confirm dropoff - order may not be in pending dropoff status', 'CONFIRM_FAILED', 400);
         }
 
-        await pool.end();
+        if (pool) { await pool.end(); }
         return jsonResponse({ success: true, data: { message: 'Dropoff confirmed' } }, 200, true, origin);
       }
 
@@ -721,16 +741,16 @@ const worker: ExportedHandler<Env> = {
       const updateStatusMatch = path.match(/^\/api\/storage\/([^/]+)\/status$/);
       if (updateStatusMatch && method === 'POST') {
         const roleCheck = requireRole(request, ['admin', 'storage']);
-        if (roleCheck) { await pool.end(); return roleCheck; }
+        if (roleCheck) { if (pool) { await pool.end(); } return roleCheck; }
         const storageId = updateStatusMatch[1];
         const body = await request.json() as { status: string };
         
         if (!body.status) {
-          await pool.end();
+          if (pool) { await pool.end(); }
           return errorResponse('status is required', 'MISSING_STATUS', 400);
         }
 
-        if (USE_STORAGE_WORKER) {
+        if (useWorkerProxies(env)) {
           try {
             const response = await proxyToStorageWorker(
               `/api/storage/${storageId}/status`, 
@@ -740,7 +760,7 @@ const worker: ExportedHandler<Env> = {
               request,
               env
             );
-            await pool.end();
+            if (pool) { await pool.end(); }
             return response;
           } catch (proxyError) {
             console.log('Update status proxy failed, falling back to direct:', proxyError);
@@ -751,11 +771,11 @@ const worker: ExportedHandler<Env> = {
         const success = await repos.storage.updateStatus(storageId, body.status as any);
         
         if (!success) {
-          await pool.end();
+          if (pool) { await pool.end(); }
           return errorResponse('Failed to update status', 'UPDATE_FAILED', 400);
         }
 
-        await pool.end();
+        if (pool) { await pool.end(); }
         return jsonResponse({ success: true, data: { message: 'Status updated' } }, 200, true, origin);
       }
 
@@ -763,10 +783,10 @@ const worker: ExportedHandler<Env> = {
       const cancelStorageMatch = path.match(/^\/api\/storage\/([^/]+)\/cancel$/);
       if (cancelStorageMatch && method === 'POST') {
         const roleCheck = requireRole(request, ['admin', 'storage']);
-        if (roleCheck) { await pool.end(); return roleCheck; }
+        if (roleCheck) { if (pool) { await pool.end(); } return roleCheck; }
         const storageId = cancelStorageMatch[1];
 
-        if (USE_STORAGE_WORKER) {
+        if (useWorkerProxies(env)) {
           try {
             const response = await proxyToStorageWorker(
               `/api/storage/${storageId}/cancel`, 
@@ -776,7 +796,7 @@ const worker: ExportedHandler<Env> = {
               request,
               env
             );
-            await pool.end();
+            if (pool) { await pool.end(); }
             return response;
           } catch (proxyError) {
             console.log('Cancel storage proxy failed, falling back to direct:', proxyError);
@@ -787,11 +807,11 @@ const worker: ExportedHandler<Env> = {
         const success = await repos.storage.cancel(storageId);
         
         if (!success) {
-          await pool.end();
+          if (pool) { await pool.end(); }
           return errorResponse('Failed to cancel storage order - may already be delivered, cancelled, or not found', 'CANCEL_FAILED', 400);
         }
 
-        await pool.end();
+        if (pool) { await pool.end(); }
         return jsonResponse({ success: true, data: { message: 'Storage order cancelled' } }, 200, true, origin);
       }
 
@@ -799,11 +819,11 @@ const worker: ExportedHandler<Env> = {
       const updateStorageMatch = path.match(/^\/api\/storage\/([^/]+)$/);
       if (updateStorageMatch && method === 'PUT') {
         const roleCheck = requireRole(request, ['admin', 'storage']);
-        if (roleCheck) { await pool.end(); return roleCheck; }
+        if (roleCheck) { if (pool) { await pool.end(); } return roleCheck; }
         const storageId = updateStorageMatch[1];
         const body = await request.json() as Record<string, unknown>;
 
-        if (USE_STORAGE_WORKER) {
+        if (useWorkerProxies(env)) {
           try {
             const response = await proxyToStorageWorker(
               `/api/storage/${storageId}`, 
@@ -813,7 +833,7 @@ const worker: ExportedHandler<Env> = {
               request,
               env
             );
-            await pool.end();
+            if (pool) { await pool.end(); }
             return response;
           } catch (proxyError) {
             console.log('Update storage proxy failed, falling back to direct:', proxyError);
@@ -823,7 +843,7 @@ const worker: ExportedHandler<Env> = {
         // Fallback to direct query
         const current = await repos.storage.findById(storageId);
         if (!current) {
-          await pool.end();
+          if (pool) { await pool.end(); }
           return errorResponse('Storage order not found', 'NOT_FOUND', 404);
         }
 
@@ -887,14 +907,14 @@ const worker: ExportedHandler<Env> = {
         }
 
         if (Object.keys(updates).length === 0) {
-          await pool.end();
+          if (pool) { await pool.end(); }
           return errorResponse('No valid fields to update', 'NO_CHANGES', 400);
         }
 
         const success = await repos.storage.updateOrder(storageId, updates);
         
         if (!success) {
-          await pool.end();
+          if (pool) { await pool.end(); }
           return errorResponse(
             'Failed to update order — may not exist or is no longer in pending dropoff status',
             'UPDATE_FAILED',
@@ -902,7 +922,7 @@ const worker: ExportedHandler<Env> = {
           );
         }
 
-        await pool.end();
+        if (pool) { await pool.end(); }
         return jsonResponse({ success: true, data: { message: 'Order updated successfully' } }, 200, true, origin);
       }
 
@@ -911,7 +931,7 @@ const worker: ExportedHandler<Env> = {
       // Revenue report (weekly, monthly, quarterly, annual) (admin only)
       if (path === '/api/reports/revenue' && method === 'GET') {
         const roleCheck = requireRole(request, ['admin']);
-        if (roleCheck) { await pool.end(); return roleCheck; }
+        if (roleCheck) { if (pool) { await pool.end(); } return roleCheck; }
         const period = url.searchParams.get('period') || 'monthly';
         let report;
         
@@ -929,22 +949,22 @@ const worker: ExportedHandler<Env> = {
             report = await repos.reports.getAnnualReport();
             break;
           default:
-            await pool.end();
+            if (pool) { await pool.end(); }
             return errorResponse('Invalid period. Use: weekly, monthly, quarterly, annual', 'INVALID_PERIOD', 400);
         }
         
-        await pool.end();
+        if (pool) { await pool.end(); }
         return jsonResponse({ success: true, data: report }, 200, true, origin);
       }
 
       // Driver earnings report (admin only)
       if (path === '/api/reports/driver-earnings' && method === 'GET') {
         const roleCheck = requireRole(request, ['admin']);
-        if (roleCheck) { await pool.end(); return roleCheck; }
+        if (roleCheck) { if (pool) { await pool.end(); } return roleCheck; }
         const period = url.searchParams.get('period') || 'monthly';
         
         if (!['weekly', 'monthly', 'quarterly', 'annual'].includes(period)) {
-          await pool.end();
+          if (pool) { await pool.end(); }
           return errorResponse('Invalid period. Use: weekly, monthly, quarterly, annual', 'INVALID_PERIOD', 400);
         }
         
@@ -952,24 +972,24 @@ const worker: ExportedHandler<Env> = {
         
         const earnings = await repos.reports.getDriverEarnings(startDate, endDate);
         
-        await pool.end();
+        if (pool) { await pool.end(); }
         return jsonResponse({ success: true, data: earnings, meta: { period, label, count: earnings.length } }, 200, true, origin);
       }
 
       // Get combined earnings breakdown (transport + storage) by month/quarter/year (admin only)
       if (path === '/api/reports/earnings-breakdown' && method === 'GET') {
         const roleCheck = requireRole(request, ['admin']);
-        if (roleCheck) { await pool.end(); return roleCheck; }
+        if (roleCheck) { if (pool) { await pool.end(); } return roleCheck; }
         const type = url.searchParams.get('type') || 'monthly';
         
         if (!['monthly', 'quarterly', 'yearly'].includes(type)) {
-          await pool.end();
+          if (pool) { await pool.end(); }
           return errorResponse('Invalid type. Use: monthly, quarterly, yearly', 'INVALID_TYPE', 400);
         }
         
         const breakdown = await repos.reports.getEarningsBreakdown(type as 'monthly' | 'quarterly' | 'yearly');
         
-        await pool.end();
+        if (pool) { await pool.end(); }
         return jsonResponse({ 
           success: true, 
           data: breakdown, 
@@ -988,7 +1008,7 @@ const worker: ExportedHandler<Env> = {
       // Export storage orders as CSV (admin only)
       if (path === '/api/export/storage-orders.csv' && method === 'GET') {
         const roleCheck = requireRole(request, ['admin']);
-        if (roleCheck) { await pool.end(); return roleCheck; }
+        if (roleCheck) { if (pool) { await pool.end(); } return roleCheck; }
         const days = parseInt(url.searchParams.get('days') || '30', 10);
         const endDate = new Date().toISOString();
         const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
@@ -1013,7 +1033,7 @@ const worker: ExportedHandler<Env> = {
         
         const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))].join('\n');
         
-        await pool.end();
+        if (pool) { await pool.end(); }
         return new Response(csv, {
           status: 200,
           headers: {
@@ -1027,7 +1047,7 @@ const worker: ExportedHandler<Env> = {
       // Export transport orders as CSV (admin only)
       if (path === '/api/export/transport-orders.csv' && method === 'GET') {
         const roleCheck = requireRole(request, ['admin']);
-        if (roleCheck) { await pool.end(); return roleCheck; }
+        if (roleCheck) { if (pool) { await pool.end(); } return roleCheck; }
         const days = parseInt(url.searchParams.get('days') || '30', 10);
         const endDate = new Date().toISOString();
         const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
@@ -1052,7 +1072,7 @@ const worker: ExportedHandler<Env> = {
         
         const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))].join('\n');
         
-        await pool.end();
+        if (pool) { await pool.end(); }
         return new Response(csv, {
           status: 200,
           headers: {
@@ -1066,7 +1086,7 @@ const worker: ExportedHandler<Env> = {
       // Export storage orders as JSON (for XLSX generation) (admin only)
       if (path === '/api/export/storage-orders.json' && method === 'GET') {
         const roleCheck = requireRole(request, ['admin']);
-        if (roleCheck) { await pool.end(); return roleCheck; }
+        if (roleCheck) { if (pool) { await pool.end(); } return roleCheck; }
         const days = parseInt(url.searchParams.get('days') || '30', 10);
         const endDate = new Date().toISOString();
         const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
@@ -1088,14 +1108,14 @@ const worker: ExportedHandler<Env> = {
           'Picked Up At': o.picked_up_at || ''
         }));
         
-        await pool.end();
+        if (pool) { await pool.end(); }
         return jsonResponse({ success: true, data: formattedOrders, count: formattedOrders.length }, 200, true, origin);
       }
 
       // Export transport orders as JSON (for XLSX generation) (admin only)
       if (path === '/api/export/transport-orders.json' && method === 'GET') {
         const roleCheck = requireRole(request, ['admin']);
-        if (roleCheck) { await pool.end(); return roleCheck; }
+        if (roleCheck) { if (pool) { await pool.end(); } return roleCheck; }
         const days = parseInt(url.searchParams.get('days') || '30', 10);
         const endDate = new Date().toISOString();
         const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
@@ -1117,32 +1137,36 @@ const worker: ExportedHandler<Env> = {
           'Delivered At': o.delivered_at || ''
         }));
         
-        await pool.end();
+        if (pool) { await pool.end(); }
         return jsonResponse({ success: true, data: formattedOrders, count: formattedOrders.length }, 200, true, origin);
       }
 
       // Legacy query endpoint (admin only)
       if (path === '/api/neon-query' && method === 'POST') {
         const roleCheck = requireRole(request, ['admin']);
-        if (roleCheck) { await pool.end(); return roleCheck; }
+        if (roleCheck) { if (pool) { await pool.end(); } return roleCheck; }
+
+        if (!pool) {
+          return errorResponse('Raw SQL queries are not available in mock data mode', 'MOCK_MODE_NO_RAW_SQL', 503);
+        }
 
         const body = await request.json() as { query: string; params?: unknown[] };
         
         if (!body.query) {
-          await pool.end();
+          if (pool) { await pool.end(); }
           return errorResponse('Query required', 'MISSING_QUERY', 400);
         }
 
         const normalizedQuery = body.query.trim().toUpperCase();
         if (!normalizedQuery.startsWith('SELECT') && !normalizedQuery.startsWith('UPDATE')) {
-          await pool.end();
+          if (pool) { await pool.end(); }
           return errorResponse('Only SELECT/UPDATE allowed', 'INVALID_QUERY', 400);
         }
 
         const client = await pool.connect();
         try {
           const result = await client.query(body.query, body.params || []);
-          await pool.end();
+          if (pool) { await pool.end(); }
           return jsonResponse({ 
             success: true, 
             data: { rows: result.rows, rowCount: result.rowCount }
@@ -1165,7 +1189,7 @@ const worker: ExportedHandler<Env> = {
                 let redirectPath = '/';
                 if (payload.role === 'transport') redirectPath = '/';
                 if (payload.role === 'storage') redirectPath = '/storage';
-                await pool.end();
+                if (pool) { await pool.end(); }
                 return new Response(null, { status: 302, headers: { Location: redirectPath } });
               }
             } catch (error) {
@@ -1178,41 +1202,36 @@ const worker: ExportedHandler<Env> = {
             }
           }
         }
-        await pool.end(); // Close pool after request
+        if (pool) { await pool.end(); } // Close pool after request
         return htmlResponse(LOGIN_HTML);
       }
 
       if (path === '/' && method === 'GET') {
         const roleCheck = requireRole(request, ['admin', 'transport']);
-        if (roleCheck) { await pool.end(); return roleCheck; }
+        if (roleCheck) { if (pool) { await pool.end(); } return roleCheck; }
         
-        await pool.end(); // Close pool after request
+        if (pool) { await pool.end(); } // Close pool after request
         return htmlResponse(DASHBOARD_HTML);
       }
 
       if (path === '/drivers' && method === 'GET') {
         const roleCheck = requireRole(request, ['admin']);
-        if (roleCheck) { await pool.end(); return roleCheck; }
+        if (roleCheck) { if (pool) { await pool.end(); } return roleCheck; }
         
-        await pool.end(); // Close pool after request
+        if (pool) { await pool.end(); } // Close pool after request
         return htmlResponse(DRIVER_STATS_HTML);
       }
 
       // Storage page
       if (path === '/storage' && method === 'GET') {
         const roleCheck = requireRole(request, ['admin', 'storage']);
-        if (roleCheck) { await pool.end(); return roleCheck; }
+        if (roleCheck) { if (pool) { await pool.end(); } return roleCheck; }
         
-        await pool.end(); // Close pool after request
+        if (pool) { await pool.end(); } // Close pool after request
         return htmlResponse(STORAGE_HTML);
       }
 
-      if (path === '/loading' && method === 'GET') {
-        await pool.end(); // Close pool after request
-        return htmlResponse(LOADING_HTML);
-      }
-
-      await pool.end(); // Close pool for 404 responses
+      if (pool) { await pool.end(); } // Close pool for 404 responses
       return errorResponse('Not Found', 'NOT_FOUND', 404);
 
     } catch (error) {

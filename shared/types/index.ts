@@ -1,7 +1,7 @@
 // Environment bindings
 export interface Env {
   ROLES: string;
-  DATABASE_URL: string;
+  DATABASE_URL?: string;
   JWT_SECRET: string;
   JWT_EXPIRY_HOURS?: string;
   PIN_PEPPER?: string; // Optional: secret for hashing PINs (recommended)

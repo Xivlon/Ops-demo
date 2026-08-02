@@ -5,21 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Login - LuggageLink Ops</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            slate: {
-              50: '#f8fafc', 100: '#f1f5f9', 200: '#e2e8f0', 300: '#cbd5e1',
-              400: '#94a3b8', 500: '#64748b', 600: '#475569', 700: '#334155',
-              800: '#1e293b', 900: '#0f172a', 950: '#020617',
-            }
-          }
-        }
-      }
-    }
-  </script>
   <script src="https://unpkg.com/lucide@latest"></script>
   <style>
     body { font-family: sans-serif; }
@@ -32,50 +17,50 @@
     }
   </style>
 </head>
-<body class="bg-slate-900 text-slate-100 min-h-screen flex items-center justify-center">
-  
+<body class="bg-zinc-950 text-zinc-100 min-h-screen flex items-center justify-center">
+
   <div class="w-full max-w-md p-8">
     <div class="text-center mb-8">
-      <div class="bg-purple-600 w-16 h-16 rounded-xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-purple-500/20">
-        <i data-lucide="tower-control" class="w-8 h-8"></i>
+      <div class="bg-amber-500 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg shadow-amber-500/20">
+        <i data-lucide="briefcase" class="w-8 h-8"></i>
       </div>
       <h1 class="text-2xl font-bold">LuggageLink Ops</h1>
-      <p class="text-slate-400 mt-2">Operations Console</p>
+      <p class="text-zinc-400 mt-2">Operations Console</p>
     </div>
 
-    <form id="login-form" class="bg-slate-800 rounded-xl p-6 border border-slate-700 shadow-xl">
+    <form id="login-form" class="bg-zinc-900 rounded-xl p-6 border border-zinc-800 shadow-xl">
       <div class="mb-4">
-        <label class="block text-sm font-medium text-slate-300 mb-2">PIN Code</label>
+        <label class="block text-sm font-medium text-zinc-300 mb-2">PIN Code</label>
         <div class="relative">
-          <input 
-            type="password" 
-            id="pin-input" 
+          <input
+            type="password"
+            id="pin-input"
             maxlength="10"
-            class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-center text-xl tracking-widest focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-colors"
+            class="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-4 py-3 text-center text-xl tracking-widest focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors"
             placeholder="••••"
             autocomplete="off"
           >
-          <button type="button" onclick="togglePinVisibility()" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-300">
+          <button type="button" onclick="togglePinVisibility()" class="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-300">
             <i data-lucide="eye" class="w-5 h-5" id="eye-icon"></i>
           </button>
         </div>
       </div>
 
-      <div id="error-message" class="hidden mb-4 p-3 bg-red-900/30 border border-red-500/30 rounded-lg text-red-400 text-sm text-center font-medium">
+      <div id="error-message" class="hidden mb-4 p-3 bg-rose-900/30 border border-rose-500/30 rounded-lg text-rose-400 text-sm text-center font-medium">
         Invalid PIN code
       </div>
 
-      <button 
-        type="submit" 
+      <button
+        type="submit"
         id="login-button"
-        class="w-full bg-purple-600 hover:bg-purple-500 text-white font-semibold py-3 rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+        class="w-full bg-amber-500 hover:bg-amber-400 text-white font-semibold py-3 rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <i data-lucide="log-in" class="w-5 h-5"></i>
         <span>Sign In</span>
       </button>
     </form>
 
-    <div class="mt-6 text-center text-xs text-slate-500">
+    <div class="mt-6 text-center text-xs text-zinc-500">
       <p>Secure Operations Environment</p>
       <p class="mt-1">Authorized personnel only</p>
     </div>
