@@ -1,5 +1,6 @@
 # Root config for deployment - points to main-worker (Demo)
 name = 'ops-demo'
+account_id = '86758776aa0112ed0238159a5095690c'
 main = 'packages/main-worker/src/index.ts'
 compatibility_date = '2024-01-01'
 compatibility_flags = ['nodejs_compat']
