@@ -62,7 +62,7 @@ Benefits:
 Instead of a single `?pin=1234` in every URL, we use 3 role-based PINs:
 
 ```typescript
-// ROLES = {"admin":"847291","storage":"563204","transport":"918473"}
+// ROLES = {"admin":"1234","storage":"4321","transport":"1213"}
 // Login POST /api/login → Validates PIN against ROLES map
 //                   → Sets HttpOnly cookie with JWT (role claim)
 // Subsequent requests → Cookie automatically sent
