@@ -24,7 +24,7 @@ JWT_EXPIRY_HOURS = '24'
 # For local development, create a .dev.vars file (already gitignored):
 #   DATABASE_URL=postgresql://...
 #   JWT_SECRET=...
-#   ROLES={"admin":"...","storage":"...","transport":"..."}
+#   ROLES='{"admin":"...","storage":"...","transport":"..."}'
 #   PIN_PEPPER=your-pepper-here
 
 # Environment-specific configuration
