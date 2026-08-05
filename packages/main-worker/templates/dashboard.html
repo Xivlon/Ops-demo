@@ -11,18 +11,15 @@
   <script>
     tailwind.config = {
       theme: { extend: { colors: {
-        koda: { base:'#141210', panel:'#1e1a15', line:'#322a1f', gold:'#ffb000', golddim:'#8a6a1f', red:'#e2472f', cream:'#f4efe6', ink:'#1a1713', mute:'#9a8f7d' }
+        koda: { base:'#141210', panel:'#1e1a15', card:'#2a241b', line:'#322a1f', gold:'#ffb000', golddim:'#8a6a1f', red:'#e2472f', cream:'#f4efe6', ink:'#1a1713', mute:'#9a8f7d' }
       }, fontFamily: {
         sans: ['"Space Grotesk"','sans-serif'], mono: ['"Space Mono"','monospace']
       } } }
     }
   </script>
   
-  <script src="https://unpkg.com/lucide@latest"></script>
   <style>
     body { font-family: 'Space Grotesk', sans-serif; background: #141210; }
-    body::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 9999; background: repeating-linear-gradient(0deg, rgba(255,255,255,.025) 0 1px, transparent 1px 3px); }
-    body::before { content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 9998; background: radial-gradient(ellipse at center, rgba(255,176,0,.04) 0%, rgba(0,0,0,.45) 100%); }
     th { cursor: pointer; user-select: none; transition: color 0.2s; }
     th:hover { color: #ffb000; }
     .sort-indicator { display: inline-block; margin-left: 4px; width: 10px; }
@@ -60,12 +57,12 @@
     html::after { content:''; position:fixed; left:0; right:0; bottom:0; height:16px; pointer-events:none; z-index:9996;
       background:#0c0a08; border-top:1px solid #322a1f;
       background-image:radial-gradient(circle at 12px 8px, #1e1a15 3px, transparent 3.6px); background-size:26px 16px; }
-    /* polaroid spectrum stripes — bottom-left corner chip */
-    html::before { content:''; position:fixed; left:18px; bottom:28px; width:104px; height:42px; pointer-events:none; z-index:9996;
-      border-radius:5px; opacity:.85; box-shadow:0 4px 12px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.08);
-      background:repeating-linear-gradient(135deg,
-        #e2472f 0 9px, #eb7532 9px 18px, #f7d038 18px 27px,
-        #7fb069 27px 36px, #34bbe6 36px 45px, #4355db 45px 54px); }
+    /* polaroid spectrum — diagonal band cut across the bottom-left corner of the screen */
+    html::before { content:''; position:fixed; left:-70px; bottom:16px; width:360px; height:52px; pointer-events:none; z-index:9996; opacity:.8;
+      transform:rotate(-45deg); box-shadow:0 4px 14px rgba(0,0,0,.45);
+      background:repeating-linear-gradient(90deg,
+        #e2472f 0 14px, #eb7532 14px 28px, #f7d038 28px 42px,
+        #7fb069 42px 56px, #34bbe6 56px 70px, #4355db 70px 84px); }
     /* blinking terminal cursor on the wordmark */
     h1::after { content:'▮'; margin-left:3px; font-size:.75em; color:#ffb000; animation:blink 1.2s steps(1) infinite; }
     @keyframes blink { 50% { opacity:0; } }
@@ -82,8 +79,8 @@
 <body class="bg-koda-base text-koda-cream min-h-screen font-sans selection:bg-koda-gold selection:text-koda-ink"><nav class="bg-koda-panel border-b border-koda-line px-6 py-4 sticky top-0 z-50 shadow-md">
     <div class="max-w-7xl mx-auto flex justify-between items-center">
         <div class="flex items-center gap-3">
-            <div class="bg-koda-gold text-koda-ink p-2.5 rounded-full shadow-inner shadow-koda-gold/20">
-                <i data-lucide="briefcase" class="w-7 h-7"></i>
+            <div class="bg-koda-gold p-2.5 rounded-full shadow-inner shadow-koda-gold/20">
+                <span class="block w-5 h-5 rounded-sm" style="background:repeating-linear-gradient(135deg,#e2472f 0 4px,#eb7532 4px 8px,#f7d038 8px 12px,#7fb069 12px 16px,#34bbe6 16px 20px,#4355db 20px 24px)"></span>
             </div>
             <div>
                 <h1 class="brand-wordmark text-xl font-bold tracking-tight">LuggageLink Ops</h1>
@@ -96,23 +93,20 @@
         <div class="flex items-center gap-2">
           <!-- Navigation Links -->
           <a href="/" id="nav-shipments" class="nav-link active px-4 py-2 rounded-lg text-koda-gold bg-koda-line transition-all flex items-center gap-2">
-            <i data-lucide="package" class="w-4 h-4"></i>
             <span class="hidden sm:inline text-sm font-medium">Shipments</span>
           </a>
           <a href="/storage" id="nav-storage" class="nav-link px-4 py-2 rounded-lg text-koda-mute hover:text-koda-gold hover:bg-koda-line transition-all flex items-center gap-2">
-            <i data-lucide="warehouse" class="w-4 h-4"></i>
             <span class="hidden sm:inline text-sm font-medium">Storage</span>
           </a>
           <a href="/drivers" id="nav-drivers" class="nav-link px-4 py-2 rounded-lg text-koda-mute hover:text-koda-gold hover:bg-koda-line transition-all flex items-center gap-2">
-            <i data-lucide="users" class="w-4 h-4"></i>
             <span class="hidden sm:inline text-sm font-medium">Drivers</span>
           </a>
           <div class="w-px h-6 bg-koda-line mx-1"></div>
           <button onclick="refreshData()" class="p-2.5 rounded-lg text-koda-mute hover:text-koda-gold hover:bg-koda-panel transition-all" title="Refresh">
-            <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+            <span class="text-xs font-semibold uppercase tracking-wider">Refresh</span>
           </button>
           <button onclick="logout()" class="p-2.5 rounded-lg text-koda-mute hover:text-koda-red hover:bg-koda-panel transition-all" title="Logout">
-            <i data-lucide="log-out" class="w-5 h-5"></i>
+            <span class="text-xs font-semibold uppercase tracking-wider">Logout</span>
           </button>
         </div>
     </div>
@@ -129,7 +123,7 @@
         <div class="p-6">
           <div class="flex items-start gap-4 mb-4">
             <div class="flex-shrink-0 w-12 h-12 rounded-full bg-koda-red/10 flex items-center justify-center">
-              <i data-lucide="alert-triangle" class="w-6 h-6 text-koda-red"></i>
+              <span class="text-koda-red text-xl font-bold">!</span>
             </div>
             <div class="flex-1">
               <h3 class="text-lg font-bold text-koda-cream mb-1">Cancel Order</h3>
@@ -141,7 +135,6 @@
           </div>
           <div class="bg-koda-base/50 rounded-lg p-3 mb-4 border border-koda-line max-w-xs mx-auto">
             <div class="flex items-center justify-center gap-2 text-sm text-koda-mute mb-2">
-              <i data-lucide="info" class="w-3 h-3"></i>
               <span>What happens next:</span>
             </div>
             <ul class="text-sm text-koda-mute space-y-1">
@@ -164,7 +157,6 @@
               Keep Order
             </button>
             <button id="confirm-cancel-btn" class="px-4 py-2 rounded-lg bg-koda-red hover:bg-koda-red/80 text-white text-sm font-medium transition-colors flex items-center gap-2">
-              <i data-lucide="x-circle" class="w-4 h-4"></i>
               Cancel Order
             </button>
           </div>
@@ -187,24 +179,22 @@
       <div class="px-6 py-4 border-b border-koda-line bg-koda-panel/50 flex justify-between items-center backdrop-blur">
          <div class="flex items-center gap-4">
              <h2 id="table-title" class="font-bold text-koda-cream text-lg flex items-center gap-2">
-                <i data-lucide="package" class="w-5 h-5 text-koda-gold"></i> <span id="title-text">Active Shipments</span>
+                <span id="title-text">Active Shipments</span>
              </h2>
              <span id="count-badge" class="bg-koda-line text-koda-cream px-2.5 py-0.5 rounded-full text-xs font-bold border border-koda-golddim">0</span>
          </div>
          
          <div class="flex items-center gap-3">
              <button id="btn-clear-filter" onclick="clearStatusFilter()" class="hidden bg-koda-line hover:bg-koda-golddim/30 text-koda-cream px-3 py-2 rounded-lg text-xs font-semibold transition-all flex items-center gap-2">
-                <i data-lucide="x" class="w-3 h-3"></i>
                 Clear Filter
              </button>
              <div class="relative">
-                <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-koda-mute"></i>
                 <input 
                   type="text" 
                   id="searchInput" 
                   placeholder="Search orders..." 
                   oninput="renderTable()"
-                  class="bg-koda-base border border-koda-line text-koda-cream text-xs rounded-lg pl-9 pr-3 py-2 w-64 focus:border-koda-gold outline-none placeholder:text-koda-mute/60"
+                  class="bg-koda-base border border-koda-line text-koda-cream text-xs rounded-lg pl-3 pr-3 py-2 w-64 focus:border-koda-gold outline-none placeholder:text-koda-mute/60"
                 >
              </div>
          </div>
@@ -244,7 +234,7 @@
             <tr>
                 <td colspan="7" class="px-6 py-12 text-center text-koda-mute">
                     <div class="flex flex-col items-center justify-center gap-2">
-                        <i data-lucide="loader-2" class="animate-spin w-8 h-8 text-koda-gold"></i>
+                        <span class="text-koda-gold animate-pulse font-bold tracking-[0.3em]">●●●</span>
                         <span>Loading live data...</span>
                     </div>
                 </td>
@@ -276,7 +266,6 @@
         });
     }
     
-    lucide.createIcons();
     let allShipments = [];
     let allDrivers = [];
     let sortOrder = { 1: 'desc' };
@@ -378,23 +367,23 @@
         const makeCard = (label, val, color, status = null, navigate = false) => {
             const cardInner = `<div class="flex items-center gap-1.5 mb-1">
                        <span class="inline-block w-2.5 h-2.5 rounded-sm bg-${color}-500 flex-shrink-0"></span>
-                       <span class="text-[#6b6152] text-[10px] font-bold uppercase tracking-[0.15em]">${label}</span>
+                       <span class="text-koda-mute text-[10px] font-bold uppercase tracking-[0.15em]">${label}</span>
                        </div>
-                       <div class="stat-num text-2xl font-bold text-koda-ink">${val || 0}</div>`;
+                       <div class="stat-num text-2xl font-bold text-koda-cream">${val || 0}</div>`;
             if (navigate) {
                 // Active Drivers card - navigates to drivers page
-                return `<div onclick="window.location.href='/drivers'" class="stat-card flex-none w-[150px] snap-start bg-koda-cream rounded-md p-4 pb-5 border border-koda-line shadow-[0_4px_14px_rgba(0,0,0,.5)] transition-all cursor-pointer">${cardInner}</div>`;
+                return `<div onclick="window.location.href='/drivers'" class="stat-card flex-none w-[150px] snap-start bg-koda-card rounded-md p-4 pb-5 border border-koda-line shadow-[0_4px_14px_rgba(0,0,0,.5)] transition-all cursor-pointer">${cardInner}</div>`;
             }
             
             if (status) {
                 // Filterable stat cards
                 const isActive = currentStatusFilter === status;
                 const activeClass = isActive ? 'ring-2 ring-koda-gold -translate-y-0.5' : '';
-                return `<div data-status="${status}" onclick="setStatusFilter('${status}')" class="stat-card ${activeClass} flex-none w-[150px] snap-start bg-koda-cream rounded-md p-4 pb-5 border border-koda-line shadow-[0_4px_14px_rgba(0,0,0,.5)] transition-all cursor-pointer">${cardInner}</div>`;
+                return `<div data-status="${status}" onclick="setStatusFilter('${status}')" class="stat-card ${activeClass} flex-none w-[150px] snap-start bg-koda-card rounded-md p-4 pb-5 border border-koda-line shadow-[0_4px_14px_rgba(0,0,0,.5)] transition-all cursor-pointer">${cardInner}</div>`;
             }
             
             // Non-clickable cards
-            return `<div class="flex-none w-[150px] snap-start bg-koda-cream rounded-md p-4 pb-5 border border-koda-line shadow-[0_4px_14px_rgba(0,0,0,.5)]">${cardInner}</div>`;
+            return `<div class="flex-none w-[150px] snap-start bg-koda-card rounded-md p-4 pb-5 border border-koda-line shadow-[0_4px_14px_rgba(0,0,0,.5)]">${cardInner}</div>`;
         };
 
         const grid = document.getElementById('stats-grid');
@@ -746,7 +735,7 @@
                             options +
                         '</select>' +
                         '<button onclick="event.stopPropagation(); assignDriver(\''+s.id+'\');" class="bg-koda-gold hover:bg-koda-gold/80 text-koda-ink p-1 rounded transition-colors" title="Confirm Assignment">' +
-                            '<i data-lucide="check" class="w-3 h-3"></i>' +
+                            '<span class="text-[10px] font-bold px-0.5">✓</span>' +
                         '</button>' +
                     '</div>';
                 } else if (allDrivers.length === 0) {
@@ -758,7 +747,6 @@
                 const dName = s.driver_name || 'ID: ' + (dId?.slice(0,5) || 'N/A');
                 driverHtml = 
                     '<div class="flex items-center gap-1.5 text-koda-gold">' +
-                        '<i data-lucide="user" class="w-3 h-3"></i>' +
                         '<span class="font-mono text-xs font-bold">' + dName + '</span>' +
                     '</div>';
             } else {
@@ -795,10 +783,10 @@
             if (s.pickup_photo_url || s.delivery_photo_url) {
                 photoLinksHtml = '<div class="flex items-center gap-2 mt-2 pt-2 border-t border-koda-line/50">' +
                     (s.pickup_photo_url 
-                        ? '<a href="' + escapeHtml(s.pickup_photo_url) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" class="inline-flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 px-2 py-1 rounded transition-colors" title="View pickup photo"><i data-lucide="upload" class="w-4 h-4"></i>Pickup</a>'
+                        ? '<a href="' + escapeHtml(s.pickup_photo_url) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" class="inline-flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 px-2 py-1 rounded transition-colors" title="View pickup photo">Pickup</a>'
                         : '') +
                     (s.delivery_photo_url 
-                        ? '<a href="' + escapeHtml(s.delivery_photo_url) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" class="inline-flex items-center gap-1.5 text-xs text-emerald-400 hover:text-green-300 bg-emerald-500/10 hover:bg-emerald-500/20 px-2 py-1 rounded transition-colors" title="View delivery photo"><i data-lucide="package-check" class="w-4 h-4"></i>Delivery</a>'
+                        ? '<a href="' + escapeHtml(s.delivery_photo_url) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" class="inline-flex items-center gap-1.5 text-xs text-emerald-400 hover:text-green-300 bg-emerald-500/10 hover:bg-emerald-500/20 px-2 py-1 rounded transition-colors" title="View delivery photo">Delivery</a>'
                         : '') +
                 '</div>';
             }
@@ -824,7 +812,7 @@
                      '<div class="flex flex-col gap-2 max-w-[140px]">' +
                      fmtLoc(s, 'pickup') +
                      '<div class="flex items-center justify-center gap-1 text-koda-mute py-1">' +
-                     '<i data-lucide="arrow-down" class="w-3 h-3"></i>' +
+                     '<span class="text-[10px]">↓</span>' +
                      '<span class="text-[10px] uppercase tracking-wide">to</span>' +
                      '</div>' +
                      fmtLoc(s, 'dropoff') +
@@ -843,17 +831,15 @@
                      '<td class="px-6 py-4 whitespace-nowrap">' +
                      (['PENDING', 'ASSIGNED', 'IN_TRANSIT'].includes(s.status) 
                          ? '<button onclick="event.stopPropagation(); cancelOrder(\'' + s.id + '\', \'' + (s.customer_name || 'Order') + '\');" class="bg-koda-red/80 hover:bg-koda-red text-white px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-1.5" title="Cancel Order">' +
-                           '<i data-lucide="x-circle" class="w-3.5 h-3.5"></i>Cancel' +
+                           'Cancel' +
                            '</button>' 
                          : (s.status === 'CANCELLED' 
-                             ? '<span class="text-koda-mute text-xs italic flex items-center gap-1"><i data-lucide="ban" class="w-3 h-3"></i>Cancelled</span>' 
+                             ? '<span class="text-koda-mute text-xs italic flex items-center gap-1">Cancelled</span>' 
                              : '<span class="text-koda-mute text-xs">-</span>')
                      ) +
                      '</td>' +
                      '</tr>';
         }).join('');
-        
-        lucide.createIcons();
     }
 
     function sortTable(colIndex) {
@@ -916,8 +902,6 @@
             content.classList.remove('scale-95', 'opacity-0');
             content.classList.add('scale-100', 'opacity-100');
         });
-        
-        lucide.createIcons();
     }
 
     function closeCancelModal() {
@@ -940,8 +924,7 @@
         
         const btn = document.getElementById('confirm-cancel-btn');
         btn.disabled = true;
-        btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>Cancelling...';
-        lucide.createIcons();
+        btn.innerHTML = 'Cancelling...';
         
         try {
             const res = await fetch('/api/shipments/' + pendingCancelId + '/cancel', {
@@ -965,7 +948,7 @@
             closeCancelModal();
         } finally {
             btn.disabled = false;
-            btn.innerHTML = '<i data-lucide="x-circle" class="w-4 h-4"></i>Cancel Order';
+            btn.innerHTML = 'Cancel Order';
         }
     }
 

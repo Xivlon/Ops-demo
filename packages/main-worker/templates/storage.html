@@ -11,20 +11,15 @@
   <script>
     tailwind.config = {
       theme: { extend: { colors: {
-        koda: { base:'#141210', panel:'#1e1a15', line:'#322a1f', gold:'#ffb000', golddim:'#8a6a1f', red:'#e2472f', cream:'#f4efe6', ink:'#1a1713', mute:'#9a8f7d' }
+        koda: { base:'#141210', panel:'#1e1a15', card:'#2a241b', line:'#322a1f', gold:'#ffb000', golddim:'#8a6a1f', red:'#e2472f', cream:'#f4efe6', ink:'#1a1713', mute:'#9a8f7d' }
       }, fontFamily: {
         sans: ['"Space Grotesk"','sans-serif'], mono: ['"Space Mono"','monospace']
       } } }
     }
   </script>
 
-  <script src="https://unpkg.com/lucide@latest"></script>
   <style>
     body { font-family:'Space Grotesk',sans-serif; background:#141210; }
-    /* Sci-fi console scanlines */
-    body::after { content:''; position:fixed; inset:0; pointer-events:none; z-index:9999; background:repeating-linear-gradient(0deg, rgba(255,255,255,.025) 0 1px, transparent 1px 3px); }
-    /* Subtle warm vignette */
-    body::before { content:''; position:fixed; inset:0; pointer-events:none; z-index:9998; background:radial-gradient(ellipse at center, transparent 55%, rgba(50,42,31,.4) 100%); }
     .stat-num { font-family:'Space Mono',monospace; font-variant-numeric:tabular-nums; }
     .micro-label { letter-spacing:.15em; text-transform:uppercase; }
     .brand-wordmark { text-shadow: 0 0 12px rgba(255,176,0,.35); }
@@ -65,12 +60,12 @@
     html::after { content:''; position:fixed; left:0; right:0; bottom:0; height:16px; pointer-events:none; z-index:9996;
       background:#0c0a08; border-top:1px solid #322a1f;
       background-image:radial-gradient(circle at 12px 8px, #1e1a15 3px, transparent 3.6px); background-size:26px 16px; }
-    /* polaroid spectrum stripes — bottom-left corner chip */
-    html::before { content:''; position:fixed; left:18px; bottom:28px; width:104px; height:42px; pointer-events:none; z-index:9996;
-      border-radius:5px; opacity:.85; box-shadow:0 4px 12px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.08);
-      background:repeating-linear-gradient(135deg,
-        #e2472f 0 9px, #eb7532 9px 18px, #f7d038 18px 27px,
-        #7fb069 27px 36px, #34bbe6 36px 45px, #4355db 45px 54px); }
+    /* polaroid spectrum — diagonal band cut across the bottom-left corner of the screen */
+    html::before { content:''; position:fixed; left:-70px; bottom:16px; width:360px; height:52px; pointer-events:none; z-index:9996; opacity:.8;
+      transform:rotate(-45deg); box-shadow:0 4px 14px rgba(0,0,0,.45);
+      background:repeating-linear-gradient(90deg,
+        #e2472f 0 14px, #eb7532 14px 28px, #f7d038 28px 42px,
+        #7fb069 42px 56px, #34bbe6 56px 70px, #4355db 70px 84px); }
     /* blinking terminal cursor on the wordmark */
     h1::after { content:'▮'; margin-left:3px; font-size:.75em; color:#ffb000; animation:blink 1.2s steps(1) infinite; }
     @keyframes blink { 50% { opacity:0; } }
@@ -87,8 +82,8 @@
 <body class="bg-koda-base text-koda-cream min-h-screen font-sans selection:bg-koda-gold selection:text-koda-ink"><nav class="bg-koda-panel border-b border-koda-line px-6 py-4 sticky top-0 z-50 shadow-md">
     <div class="max-w-7xl mx-auto flex justify-between items-center">
         <div class="flex items-center gap-3">
-            <div class="bg-koda-gold text-koda-ink p-2.5 rounded-full shadow-inner shadow-koda-gold/20">
-                <i data-lucide="warehouse" class="w-7 h-7"></i>
+            <div class="bg-koda-gold p-2.5 rounded-full shadow-inner shadow-koda-gold/20">
+                <span class="block w-5 h-5 rounded-sm" style="background:repeating-linear-gradient(135deg,#e2472f 0 4px,#eb7532 4px 8px,#f7d038 8px 12px,#7fb069 12px 16px,#34bbe6 16px 20px,#4355db 20px 24px)"></span>
             </div>
             <div>
                 <h1 class="brand-wordmark text-xl font-bold tracking-tight">Storage Ops</h1>
@@ -101,23 +96,20 @@
         <div class="flex items-center gap-2">
           <!-- Navigation Links -->
           <a href="/" id="nav-shipments" class="nav-link px-4 py-2 rounded-lg text-koda-mute hover:text-koda-gold hover:bg-koda-line transition-all flex items-center gap-2">
-            <i data-lucide="package" class="w-4 h-4"></i>
             <span class="hidden sm:inline text-sm font-medium">Shipments</span>
           </a>
           <a href="/storage" id="nav-storage" class="nav-link active px-4 py-2 rounded-lg text-koda-gold bg-koda-line transition-all flex items-center gap-2">
-            <i data-lucide="warehouse" class="w-4 h-4"></i>
             <span class="hidden sm:inline text-sm font-medium">Storage</span>
           </a>
           <a href="/drivers" id="nav-drivers" class="nav-link px-4 py-2 rounded-lg text-koda-mute hover:text-koda-gold hover:bg-koda-line transition-all flex items-center gap-2">
-            <i data-lucide="users" class="w-4 h-4"></i>
             <span class="hidden sm:inline text-sm font-medium">Drivers</span>
           </a>
           <div class="w-px h-6 bg-koda-line mx-1"></div>
           <button onclick="refreshData()" class="p-2.5 rounded-lg text-koda-mute hover:text-koda-gold hover:bg-koda-line transition-all" title="Refresh">
-            <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+            <span class="text-xs font-semibold uppercase tracking-wider">Refresh</span>
           </button>
           <button onclick="logout()" class="p-2.5 rounded-lg text-koda-mute hover:text-koda-red hover:bg-koda-line transition-all" title="Logout">
-            <i data-lucide="log-out" class="w-5 h-5"></i>
+            <span class="text-xs font-semibold uppercase tracking-wider">Logout</span>
           </button>
         </div>
     </div>
@@ -135,7 +127,7 @@
           <div class="flex items-center justify-between mb-6">
             <div class="flex items-center gap-3">
               <div class="flex-shrink-0 w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center">
-                <i data-lucide="pencil" class="w-5 h-5 text-blue-400"></i>
+                <span class="text-blue-400 text-lg font-bold">✎</span>
               </div>
               <div>
                 <h3 class="text-lg font-bold text-koda-cream">Edit Storage Order</h3>
@@ -143,7 +135,7 @@
               </div>
             </div>
             <button onclick="closeEditModal()" class="text-koda-mute hover:text-koda-cream transition-colors">
-              <i data-lucide="x" class="w-5 h-5"></i>
+              <span class="text-lg font-bold">✕</span>
             </button>
           </div>
           
@@ -153,7 +145,7 @@
             <!-- Customer Info -->
             <div class="bg-koda-base/50 rounded-lg p-4 border border-koda-line space-y-4">
               <h4 class="micro-label text-xs font-bold text-koda-mute flex items-center gap-2">
-                <i data-lucide="user" class="w-3.5 h-3.5"></i> Customer Information
+                Customer Information
               </h4>
               <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
@@ -174,7 +166,7 @@
             <!-- Contact Info -->
             <div class="bg-koda-base/50 rounded-lg p-4 border border-koda-line space-y-4">
               <h4 class="micro-label text-xs font-bold text-koda-mute flex items-center gap-2">
-                <i data-lucide="phone" class="w-3.5 h-3.5"></i> Contact Details
+                Contact Details
               </h4>
               <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
@@ -199,7 +191,7 @@
             <!-- Storage Duration -->
             <div class="bg-koda-base/50 rounded-lg p-4 border border-koda-line space-y-4">
               <h4 class="micro-label text-xs font-bold text-koda-mute flex items-center gap-2">
-                <i data-lucide="calendar" class="w-3.5 h-3.5"></i> Storage Duration
+                Storage Duration
               </h4>
               <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
@@ -220,7 +212,7 @@
             <!-- Baggage -->
             <div class="bg-koda-base/50 rounded-lg p-4 border border-koda-line space-y-4">
               <h4 class="micro-label text-xs font-bold text-koda-mute flex items-center gap-2">
-                <i data-lucide="briefcase" class="w-3.5 h-3.5"></i> Baggage ($10 Large / $7 Carry-on / $6 Backpack)
+                Baggage ($10 Large / $7 Carry-on / $6 Backpack)
               </h4>
               <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
@@ -242,7 +234,7 @@
             <!-- Notes -->
             <div class="bg-koda-base/50 rounded-lg p-4 border border-koda-line space-y-3">
               <h4 class="micro-label text-xs font-bold text-koda-mute flex items-center gap-2">
-                <i data-lucide="file-text" class="w-3.5 h-3.5"></i> Additional Info
+                Additional Info
               </h4>
               <div>
                 <label class="block text-xs text-koda-mute mb-1">Luggage Description</label>
@@ -263,7 +255,6 @@
                 Cancel
               </button>
               <button type="button" onclick="saveEdit()" id="edit-save-btn" class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors flex items-center gap-2">
-                <i data-lucide="save" class="w-4 h-4"></i>
                 Save Changes
               </button>
             </div>
@@ -279,7 +270,7 @@
         <div class="p-6">
           <div class="flex items-start gap-4 mb-4">
             <div class="flex-shrink-0 w-12 h-12 rounded-full bg-koda-red/10 flex items-center justify-center">
-              <i data-lucide="alert-triangle" class="w-6 h-6 text-koda-red"></i>
+              <span class="text-koda-red text-xl font-bold">!</span>
             </div>
             <div class="flex-1">
               <h3 class="text-lg font-bold text-koda-cream mb-1">Cancel Storage Order</h3>
@@ -291,7 +282,6 @@
           </div>
           <div class="bg-koda-base/50 rounded-lg p-3 mb-4 border border-koda-line max-w-xs mx-auto">
             <div class="flex items-center justify-center gap-2 text-sm text-koda-mute mb-2">
-              <i data-lucide="info" class="w-3 h-3"></i>
               <span>What happens next:</span>
             </div>
             <ul class="text-sm text-koda-mute space-y-1">
@@ -314,7 +304,6 @@
               Keep Order
             </button>
             <button id="confirm-cancel-btn" class="px-4 py-2 rounded-lg bg-koda-red hover:bg-red-500 text-white text-sm font-medium transition-colors flex items-center gap-2">
-              <i data-lucide="x-circle" class="w-4 h-4"></i>
               Cancel Order
             </button>
           </div>
@@ -338,14 +327,13 @@
       <div class="px-6 py-4 border-b border-koda-line bg-koda-panel/50 flex justify-between items-center backdrop-blur">
          <div class="flex items-center gap-4">
              <h2 id="table-title" class="font-bold text-koda-cream text-lg flex items-center gap-2">
-                <i data-lucide="warehouse" class="w-5 h-5 text-koda-gold"></i> <span id="title-text">Storage Orders</span>
+                <span id="title-text">Storage Orders</span>
              </h2>
              <span id="count-badge" class="bg-koda-line text-koda-cream px-2.5 py-0.5 rounded-full text-xs font-bold border border-koda-golddim stat-num">0</span>
          </div>
 
          <div class="flex items-center gap-3">
              <button id="btn-clear-filter" onclick="clearStatusFilter()" class="hidden bg-koda-line hover:bg-koda-golddim/30 text-koda-cream px-3 py-2 rounded-lg text-xs font-semibold transition-all flex items-center gap-2">
-                <i data-lucide="x" class="w-3 h-3"></i>
                 Clear Filter
              </button>
              <select id="hubFilter" onchange="renderTable()" class="bg-koda-base border border-koda-line text-koda-cream text-xs rounded-lg px-3 py-2 focus:border-koda-gold outline-none">
@@ -354,13 +342,12 @@
                 <option value="Miami">Miami</option>
              </select>
              <div class="relative">
-                <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-koda-mute"></i>
                 <input
                   type="text"
                   id="searchInput"
                   placeholder="Search storage orders..."
                   oninput="renderTable()"
-                  class="bg-koda-base border border-koda-line text-koda-cream text-xs rounded-lg pl-9 pr-3 py-2 w-80 focus:border-koda-gold outline-none placeholder:text-koda-mute/60"
+                  class="bg-koda-base border border-koda-line text-koda-cream text-xs rounded-lg pl-3 pr-3 py-2 w-80 focus:border-koda-gold outline-none placeholder:text-koda-mute/60"
                 >
              </div>
          </div>
@@ -403,7 +390,7 @@
             <tr>
                 <td colspan="9" class="px-6 py-12 text-center text-koda-mute">
                     <div class="flex flex-col items-center justify-center gap-2">
-                        <i data-lucide="loader-2" class="animate-spin w-8 h-8 text-koda-gold"></i>
+                        <span class="text-koda-gold animate-pulse font-bold tracking-[0.3em]">●●●</span>
                         <span>Loading storage data...</span>
                     </div>
                 </td>
@@ -458,7 +445,6 @@
     }
     initRole();
 
-    lucide.createIcons();
     let allStorage = [];
     let allDrivers = [];
     let sortOrder = { 1: 'desc' };
@@ -517,21 +503,21 @@
             if (status) {
                 const isActive = currentStatusFilter === status;
                 const activeClass = isActive ? 'ring-2 ring-koda-gold -translate-y-0.5' : '';
-                return `<div data-status="${status}" onclick="setStatusFilter('${status}')" class="stat-card ${activeClass} flex-none w-[150px] snap-start bg-koda-cream text-koda-ink rounded-md p-4 pb-5 border border-koda-line shadow-[0_4px_14px_rgba(0,0,0,.5)] relative overflow-hidden transition-all cursor-pointer hover:-translate-y-0.5">
+                return `<div data-status="${status}" onclick="setStatusFilter('${status}')" class="stat-card ${activeClass} flex-none w-[150px] snap-start bg-koda-card text-koda-cream rounded-md p-4 pb-5 border border-koda-line shadow-[0_4px_14px_rgba(0,0,0,.5)] relative overflow-hidden transition-all cursor-pointer hover:-translate-y-0.5">
                        <div class="flex items-center gap-1.5 mb-2">
                            <span class="w-2.5 h-2.5 rounded-[2px] bg-${color}-500 flex-shrink-0"></span>
-                           <div class="micro-label text-[10px] font-bold text-[#6b6152]">${label}</div>
+                           <div class="micro-label text-[10px] font-bold text-koda-mute">${label}</div>
                        </div>
-                       <div class="stat-num text-2xl font-bold text-koda-ink">${val || 0}</div>
+                       <div class="stat-num text-2xl font-bold text-koda-cream">${val || 0}</div>
                        </div>`;
             }
 
-            return `<div class="stat-card flex-none w-[150px] snap-start bg-koda-cream text-koda-ink rounded-md p-4 pb-5 border border-koda-line shadow-[0_4px_14px_rgba(0,0,0,.5)] relative overflow-hidden transition-all hover:-translate-y-0.5">
+            return `<div class="stat-card flex-none w-[150px] snap-start bg-koda-card text-koda-cream rounded-md p-4 pb-5 border border-koda-line shadow-[0_4px_14px_rgba(0,0,0,.5)] relative overflow-hidden transition-all hover:-translate-y-0.5">
                    <div class="flex items-center gap-1.5 mb-2">
                        <span class="w-2.5 h-2.5 rounded-[2px] bg-${color}-500 flex-shrink-0"></span>
-                       <div class="micro-label text-[10px] font-bold text-[#6b6152]">${label}</div>
+                       <div class="micro-label text-[10px] font-bold text-koda-mute">${label}</div>
                    </div>
-                   <div class="stat-num text-2xl font-bold text-koda-ink">${val || 0}</div>
+                   <div class="stat-num text-2xl font-bold text-koda-cream">${val || 0}</div>
                    </div>`;
         };
 
@@ -708,7 +694,7 @@
                     ${options}
                 </select>
                 <button onclick="event.stopPropagation(); assignDriver('${storageId}', '${driverType}');" class="bg-koda-gold hover:brightness-110 text-koda-ink p-1 rounded transition-colors" title="Confirm Assignment">
-                    <i data-lucide="check" class="w-3 h-3"></i>
+                    <span class="text-[10px] font-bold px-0.5">✓</span>
                 </button>
             </div>
         `;
@@ -719,7 +705,6 @@
         const displayName = driverName || 'ID: ' + driverId.slice(0,5);
         return `
             <div class="flex items-center gap-1 text-indigo-400">
-                <i data-lucide="user" class="w-3 h-3"></i>
                 <span class="font-mono text-xs font-bold">${escapeHtml(displayName)}</span>
             </div>
         `;
@@ -876,7 +861,6 @@
             const hubLocation = getHubLocation(s.delivery_address);
             const hubHtml = `
                 <div class="flex items-center gap-1.5 text-koda-cream">
-                    <i data-lucide="map-pin" class="w-3.5 h-3.5 text-amber-400"></i>
                     <span class="text-sm font-medium">${escapeHtml(hubLocation)}</span>
                 </div>
             `;
@@ -920,17 +904,17 @@
             // Edit button for pending_dropoff orders (admin only)
             if (effectiveStatus === 'pending_dropoff') {
                 actionButtons.push(`<button onclick="event.stopPropagation(); openEditModal('${s.id}');" class="bg-koda-line/80 hover:bg-koda-golddim text-koda-cream px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-1.5" title="Edit Order">
-                    <i data-lucide="pencil" class="w-3.5 h-3.5"></i>Edit
+                    Edit
                 </button>`);
                 actionButtons.push(`<button onclick="event.stopPropagation(); confirmDropoff('${s.id}', '${escapeHtml(s.customer_name || 'Order')}');" class="bg-blue-600/80 hover:bg-blue-500 text-white px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-1.5" title="Confirm Dropoff">
-                    <i data-lucide="package-check" class="w-3.5 h-3.5"></i>Confirm Dropoff
+                    Confirm Dropoff
                 </button>`);
             }
             
             // Confirm Pickup button for pending_pickup orders
             if (effectiveStatus === 'pending_pickup') {
                 actionButtons.push(`<button onclick="event.stopPropagation(); confirmPickup('${s.id}', '${escapeHtml(s.customer_name || 'Order')}');" class="bg-emerald-600/80 hover:bg-emerald-500 text-white px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-1.5" title="Confirm Pickup">
-                    <i data-lucide="check-circle" class="w-3.5 h-3.5"></i>Confirm Pickup
+                    Confirm Pickup
                 </button>`);
             }
             
@@ -939,7 +923,7 @@
             // Cancel button for active orders (not delivered or already cancelled)
             if (['pending_dropoff', 'pending_pickup'].includes(effectiveStatus)) {
                 actionButtons.push(`<button onclick="event.stopPropagation(); cancelOrder('${s.id}', '${escapeHtml(s.customer_name || 'Order')}');" class="bg-rose-600/80 hover:bg-rose-500 text-white px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-1.5" title="Cancel Order">
-                    <i data-lucide="x-circle" class="w-3.5 h-3.5"></i>Cancel
+                    Cancel
                 </button>`);
             }
             
@@ -947,7 +931,7 @@
             if (actionButtons.length > 0) {
                 actionsHtml = `<div class="flex flex-col gap-2">${actionButtons.join('')}</div>`;
             } else if (effectiveStatus === 'cancelled') {
-                actionsHtml = '<span class="text-koda-mute text-xs italic flex items-center gap-1"><i data-lucide="ban" class="w-3 h-3"></i>Cancelled</span>';
+                actionsHtml = '<span class="text-koda-mute text-xs italic flex items-center gap-1">Cancelled</span>';
             } else {
                 actionsHtml = '<span class="text-koda-mute text-xs">-</span>';
             }
@@ -973,8 +957,6 @@
                 <td class="px-5 py-5 whitespace-nowrap">${actionsHtml}</td>
             </tr>`;
         }).join('');
-        
-        lucide.createIcons();
     }
 
     function sortTable(colIndex) {
@@ -1040,8 +1022,6 @@
             content.classList.remove('scale-95', 'opacity-0');
             content.classList.add('scale-100', 'opacity-100');
         });
-        
-        lucide.createIcons();
     }
 
     function closeCancelModal() {
@@ -1063,8 +1043,7 @@
         
         const btn = document.getElementById('confirm-cancel-btn');
         btn.disabled = true;
-        btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>Cancelling...';
-        lucide.createIcons();
+        btn.innerHTML = 'Cancelling...';
         
         try {
             const res = await fetch(`/api/storage/${pendingCancelId}/cancel`, {
@@ -1088,7 +1067,7 @@
             closeCancelModal();
         } finally {
             btn.disabled = false;
-            btn.innerHTML = '<i data-lucide="x-circle" class="w-4 h-4"></i>Cancel Order';
+            btn.innerHTML = 'Cancel Order';
         }
     }
 
@@ -1140,8 +1119,6 @@
             content.classList.remove('scale-95', 'opacity-0');
             content.classList.add('scale-100', 'opacity-100');
         });
-        
-        lucide.createIcons();
     }
 
     function closeEditModal() {
@@ -1222,8 +1199,7 @@
         
         const btn = document.getElementById('edit-save-btn');
         btn.disabled = true;
-        btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>Saving...';
-        lucide.createIcons();
+        btn.innerHTML = 'Saving...';
         
         const body = {
             customer_name: document.getElementById('edit-customer-name').value || undefined,
@@ -1270,8 +1246,7 @@
             showToast("Network Error", "red");
         } finally {
             btn.disabled = false;
-            btn.innerHTML = '<i data-lucide="save" class="w-4 h-4"></i>Save Changes';
-            lucide.createIcons();
+            btn.innerHTML = 'Save Changes';
         }
     }
 

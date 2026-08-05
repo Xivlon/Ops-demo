@@ -11,23 +11,14 @@
   <script>
     tailwind.config = {
       theme: { extend: { colors: {
-        koda: { base:'#141210', panel:'#1e1a15', line:'#322a1f', gold:'#ffb000', golddim:'#8a6a1f', red:'#e2472f', cream:'#f4efe6', ink:'#1a1713', mute:'#9a8f7d' }
+        koda: { base:'#141210', panel:'#1e1a15', card:'#2a241b', line:'#322a1f', gold:'#ffb000', golddim:'#8a6a1f', red:'#e2472f', cream:'#f4efe6', ink:'#1a1713', mute:'#9a8f7d' }
       }, fontFamily: {
         sans: ['"Space Grotesk"','sans-serif'], mono: ['"Space Mono"','monospace']
       } } }
     }
   </script>
-  <script src="https://unpkg.com/lucide@latest"></script>
   <style>
     body { font-family: 'Space Grotesk', sans-serif; background: #141210; }
-    body::after {
-      content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 9999;
-      background: repeating-linear-gradient(0deg, rgba(255,255,255,.025) 0 1px, transparent 1px 3px);
-    }
-    body::before {
-      content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 9998;
-      background: radial-gradient(ellipse at center, transparent 55%, rgba(20,18,16,.55) 100%);
-    }
     #pin-input { font-family: 'Space Mono', monospace; font-variant-numeric: tabular-nums; }
     .micro-label { letter-spacing: .15em; text-transform: uppercase; }
     ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -50,12 +41,12 @@
     html::after { content:''; position:fixed; left:0; right:0; bottom:0; height:16px; pointer-events:none; z-index:9996;
       background:#0c0a08; border-top:1px solid #322a1f;
       background-image:radial-gradient(circle at 12px 8px, #1e1a15 3px, transparent 3.6px); background-size:26px 16px; }
-    /* polaroid spectrum stripes — bottom-left corner chip */
-    html::before { content:''; position:fixed; left:18px; bottom:28px; width:104px; height:42px; pointer-events:none; z-index:9996;
-      border-radius:5px; opacity:.85; box-shadow:0 4px 12px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.08);
-      background:repeating-linear-gradient(135deg,
-        #e2472f 0 9px, #eb7532 9px 18px, #f7d038 18px 27px,
-        #7fb069 27px 36px, #34bbe6 36px 45px, #4355db 45px 54px); }
+    /* polaroid spectrum — diagonal band cut across the bottom-left corner of the screen */
+    html::before { content:''; position:fixed; left:-70px; bottom:16px; width:360px; height:52px; pointer-events:none; z-index:9996; opacity:.8;
+      transform:rotate(-45deg); box-shadow:0 4px 14px rgba(0,0,0,.45);
+      background:repeating-linear-gradient(90deg,
+        #e2472f 0 14px, #eb7532 14px 28px, #f7d038 28px 42px,
+        #7fb069 42px 56px, #34bbe6 56px 70px, #4355db 70px 84px); }
     /* blinking terminal cursor on the wordmark */
     h1::after { content:'▮'; margin-left:3px; font-size:.75em; color:#ffb000; animation:blink 1.2s steps(1) infinite; }
     @keyframes blink { 50% { opacity:0; } }
@@ -73,16 +64,16 @@
 
   <div class="w-full max-w-md p-8">
     <div class="text-center mb-8">
-      <div class="bg-koda-gold w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg shadow-koda-gold/20 text-koda-ink">
-        <i data-lucide="briefcase" class="w-8 h-8"></i>
+      <div class="bg-koda-gold w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg shadow-koda-gold/20">
+        <span class="block w-5 h-5 rounded-sm" style="background:repeating-linear-gradient(135deg,#e2472f 0 4px,#eb7532 4px 8px,#f7d038 8px 12px,#7fb069 12px 16px,#34bbe6 16px 20px,#4355db 20px 24px)"></span>
       </div>
       <h1 class="text-2xl font-bold brand-mark">LuggageLink Ops</h1>
       <p class="micro-label text-xs text-koda-mute mt-2">Operations Console</p>
     </div>
 
-    <form id="login-form" class="polaroid-card bg-koda-cream text-koda-ink rounded-xl p-6 pb-8 border border-koda-line shadow-[0_8px_30px_rgba(0,0,0,.6)]">
+    <form id="login-form" class="polaroid-card bg-koda-card text-koda-cream rounded-xl p-6 pb-8 border border-koda-line shadow-[0_8px_30px_rgba(0,0,0,.6)]">
       <div class="mb-4">
-        <label class="micro-label block text-xs font-medium text-[#6b6152] mb-2">PIN Code</label>
+        <label class="micro-label block text-xs font-medium text-koda-mute mb-2">PIN Code</label>
         <div class="relative">
           <input
             type="password"
@@ -93,7 +84,7 @@
             autocomplete="off"
           >
           <button type="button" onclick="togglePinVisibility()" class="absolute right-3 top-1/2 -translate-y-1/2 text-koda-mute hover:text-koda-gold">
-            <i data-lucide="eye" class="w-5 h-5" id="eye-icon"></i>
+            <span id="eye-icon" class="text-xs font-semibold uppercase tracking-wider">Show</span>
           </button>
         </div>
       </div>
@@ -107,7 +98,6 @@
         id="login-button"
         class="w-full bg-koda-gold hover:brightness-110 text-koda-ink font-semibold py-3 rounded-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        <i data-lucide="log-in" class="w-5 h-5"></i>
         <span>Sign In</span>
       </button>
     </form>
@@ -119,20 +109,17 @@
   </div>
 
   <script>
-    lucide.createIcons();
-
     function togglePinVisibility() {
       const input = document.getElementById('pin-input');
       const icon = document.getElementById('eye-icon');
       
       if (input.type === 'password') {
         input.type = 'text';
-        icon.setAttribute('data-lucide', 'eye-off');
+        icon.textContent = 'Hide';
       } else {
         input.type = 'password';
-        icon.setAttribute('data-lucide', 'eye');
+        icon.textContent = 'Show';
       }
-      lucide.createIcons();
     }
 
     document.getElementById('login-form').addEventListener('submit', async (e) => {
@@ -158,8 +145,7 @@
       }
       
       button.disabled = true;
-      button.innerHTML = '<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i><span>Signing in...</span>';
-      lucide.createIcons();
+      button.innerHTML = '<span>Signing in...</span>';
 
       try {
         const res = await fetch('/api/login', {
@@ -199,8 +185,7 @@
         pinInput.focus();
         
         button.disabled = false;
-        button.innerHTML = '<i data-lucide="log-in" class="w-5 h-5"></i><span>Sign In</span>';
-        lucide.createIcons();
+        button.innerHTML = '<span>Sign In</span>';
       }
     });
 
