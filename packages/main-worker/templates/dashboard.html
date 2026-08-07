@@ -11,7 +11,7 @@
   <script>
     tailwind.config = {
       theme: { extend: { colors: {
-        koda: { base:'#141210', panel:'#1e1a15', card:'#2a241b', line:'#322a1f', gold:'#ffb000', golddim:'#8a6a1f', red:'#e2472f', cream:'#f4efe6', ink:'#1a1713', mute:'#9a8f7d' }
+        koda: { base:'#101318', panel:'#1B2129', card:'#1f2630', line:'#2a3140', gold:'#7FB4A8', golddim:'#3f5a54', red:'#e2472f', cream:'#E8DCC8', ink:'#101318', mute:'#7d8590' }
       }, fontFamily: {
         sans: ['"Space Grotesk"','sans-serif'], mono: ['"Space Mono"','monospace']
       } } }
@@ -19,9 +19,9 @@
   </script>
   
   <style>
-    body { font-family: 'Space Grotesk', sans-serif; background: #141210; }
+    body { font-family: 'Inter', sans-serif; background: #101318; }
     th { cursor: pointer; user-select: none; transition: color 0.2s; }
-    th:hover { color: #ffb000; }
+    th:hover { color: #7FB4A8; }
     .sort-indicator { display: inline-block; margin-left: 4px; width: 10px; }
     .address-truncate { 
         max-width: 160px; 
@@ -32,55 +32,40 @@
         vertical-align: middle;
     }
     ::-webkit-scrollbar { width: 8px; height: 8px; }
-    ::-webkit-scrollbar-track { background: #141210; }
-    ::-webkit-scrollbar-thumb { background: #322a1f; border-radius: 4px; }
-    ::-webkit-scrollbar-thumb:hover { background: #8a6a1f; }
-    #stats-grid { scrollbar-width: thin; scrollbar-color: #322a1f #141210; }
+    ::-webkit-scrollbar-track { background: #101318; }
+    ::-webkit-scrollbar-thumb { background: #2a3140; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #3f5a54; }
+    #stats-grid { scrollbar-width: thin; scrollbar-color: #2a3140 #101318; }
     #stats-grid::-webkit-scrollbar { height: 6px; }
-    .stat-num { font-family: 'Space Mono', monospace; font-variant-numeric: tabular-nums; }
+    .stat-num { font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums; }
     .micro-label { letter-spacing: .15em; text-transform: uppercase; }
     .stat-card { transition: all 0.2s ease; }
     .stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(0,0,0,.65); }
-    .stat-card.active { box-shadow: 0 0 0 2px #ffb000; transform: translateY(-2px); }
+    .stat-card.active { box-shadow: 0 0 0 2px #7FB4A8; transform: translateY(-2px); }
     
     /* Row hover effect */
     .shipment-row:hover { background: rgba(50, 42, 31, 0.5); }
     /* Navigation active state */
     .nav-link.active {
-      background: #322a1f;
-      color: #ffb000;
+      background: #2a3140;
+      color: #7FB4A8;
     }
-    .brand-wordmark { text-shadow: 0 0 12px rgba(255,176,0,.35); }
+    .brand-wordmark { text-shadow: 0 0 12px rgba(127,180,168,.35); }
     /* ── decorative flourishes (purely ornamental) ── */
-    body { padding-bottom: 26px; }
-    /* film sprocket strip along the bottom edge */
-    html::after { content:''; position:fixed; left:0; right:0; bottom:0; height:16px; pointer-events:none; z-index:9996;
-      background:#0c0a08; border-top:1px solid #322a1f;
-      background-image:radial-gradient(circle at 12px 8px, #1e1a15 3px, transparent 3.6px); background-size:26px 16px; }
-    /* polaroid spectrum — diagonal band cut across the bottom-left corner of the screen */
-    html::before { content:''; position:fixed; left:-70px; bottom:16px; width:360px; height:52px; pointer-events:none; z-index:9996; opacity:.8;
-      transform:rotate(-45deg); box-shadow:0 4px 14px rgba(0,0,0,.45);
-      background:repeating-linear-gradient(90deg,
-        #e2472f 0 14px, #eb7532 14px 28px, #f7d038 28px 42px,
-        #7fb069 42px 56px, #34bbe6 56px 70px, #4355db 70px 84px); }
     /* blinking terminal cursor on the wordmark */
-    h1::after { content:'▮'; margin-left:3px; font-size:.75em; color:#ffb000; animation:blink 1.2s steps(1) infinite; }
+    h1::after { content:'▮'; margin-left:3px; font-size:.75em; color:#7FB4A8; animation:blink 1.2s steps(1) infinite; }
     @keyframes blink { 50% { opacity:0; } }
-    /* gold underline sweep on nav links */
+    /* underline sweep on nav links */
     .nav-link { position:relative; }
-    .nav-link::after { content:''; position:absolute; left:12px; right:12px; bottom:5px; height:2px; background:#ffb000; opacity:.85; transform:scaleX(0); transform-origin:left; transition:transform .25s ease; }
+    .nav-link::after { content:''; position:absolute; left:12px; right:12px; bottom:5px; height:2px; background:#7FB4A8; opacity:.85; transform:scaleX(0); transform-origin:left; transition:transform .25s ease; }
     .nav-link:hover::after, .nav-link.active::after { transform:scaleX(1); }
-    /* playful polaroid tilt — straightens on hover/active */
-    .stat-card:nth-child(odd) { transform:rotate(-.6deg); }
-    .stat-card:nth-child(even) { transform:rotate(.6deg); }
-    .stat-card:hover, .stat-card.active { transform:rotate(0deg) translateY(-2px); }
   </style>
 </head>
 <body class="bg-koda-base text-koda-cream min-h-screen font-sans selection:bg-koda-gold selection:text-koda-ink"><nav class="bg-koda-panel border-b border-koda-line px-6 py-4 sticky top-0 z-50 shadow-md">
     <div class="max-w-7xl mx-auto flex justify-between items-center">
         <div class="flex items-center gap-3">
             <div class="bg-koda-gold p-2.5 rounded-full shadow-inner shadow-koda-gold/20">
-                <span class="block w-5 h-5 rounded-sm" style="background:repeating-linear-gradient(135deg,#e2472f 0 4px,#eb7532 4px 8px,#f7d038 8px 12px,#7fb069 12px 16px,#34bbe6 16px 20px,#4355db 20px 24px)"></span>
+                <span class="block w-5 h-5" style="color:#101318"><svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/></svg></span>
             </div>
             <div>
                 <h1 class="brand-wordmark text-xl font-bold tracking-tight">LuggageLink Ops</h1>
