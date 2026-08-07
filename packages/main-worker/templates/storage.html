@@ -55,9 +55,6 @@
       color: #7FB4A8;
     }
     /* ── decorative flourishes (purely ornamental) ── */
-    /* blinking terminal cursor on the wordmark */
-    h1::after { content:'▮'; margin-left:3px; font-size:.75em; color:#7FB4A8; animation:blink 1.2s steps(1) infinite; }
-    @keyframes blink { 50% { opacity:0; } }
     /* underline sweep on nav links */
     .nav-link { position:relative; }
     .nav-link::after { content:''; position:absolute; left:12px; right:12px; bottom:5px; height:2px; background:#7FB4A8; opacity:.85; transform:scaleX(0); transform-origin:left; transition:transform .25s ease; }
