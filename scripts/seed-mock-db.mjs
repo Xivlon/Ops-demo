@@ -35,6 +35,13 @@ function daysFrom(iso, n) {
   return d.toISOString();
 }
 
+// Target expiry ~3 months from Aug 7, 2026 (~Nov 7, 2026)
+function threeMonthsOut(varianceHours = 0) {
+  const d = new Date('2026-11-07T12:00:00Z');
+  d.setHours(d.getHours() + varianceHours);
+  return d.toISOString();
+}
+
 const DRIVERS = [
   { id: 'drv-001', first_name: 'Alex', last_name: 'Smith', is_online: true, vehicle_type: 'Sedan', vehicle_plate: 'LUG1001', rating: 4.8, total_deliveries: 142 },
   { id: 'drv-002', first_name: 'Jordan', last_name: 'Johnson', is_online: true, vehicle_type: 'SUV', vehicle_plate: 'LUG1002', rating: 4.6, total_deliveries: 98 },
@@ -69,8 +76,9 @@ function shipment(i) {
   const driver = status !== 'PENDING' && status !== 'CANCELLED' ? DRIVERS[i % DRIVERS.length] : null;
   const origin = AIRPORTS[i % AIRPORTS.length];
   const destination = AIRPORTS[(i + 3) % AIRPORTS.length];
-  const createdAt = daysAgo((i % 28) + 1);
-  const pickupAt = hoursFrom(createdAt, ((i % 12) + 2));
+  const isFuturePending = status === 'PENDING' || status === 'ASSIGNED';
+  const createdAt = isFuturePending ? daysAgo((i % 7) + 1) : daysAgo((i % 28) + 1);
+  const pickupAt = isFuturePending ? threeMonthsOut((i % 48) - 24) : hoursFrom(createdAt, ((i % 12) + 2));
   const dropoffBy = hoursFrom(pickupAt, ((i % 8) + 3));
   const priceCents = 2500 + ((i * 347) % 12500);
 
@@ -101,7 +109,7 @@ function shipment(i) {
     pickup_photo_url: null,
     delivery_photo_url: null,
     signature_url: null,
-    claimed_at: driver ? pickupAt : null,
+    claimed_at: driver ? (isFuturePending ? createdAt : pickupAt) : null,
     picked_up_at: status === 'IN_TRANSIT' || status === 'DELIVERED' ? pickupAt : null,
     delivered_at: status === 'DELIVERED' ? dropoffBy : null,
     created_at: createdAt,
@@ -128,6 +136,7 @@ function storageOrder(i) {
   const status = statuses[i];
   const pickupDriver = status !== 'PENDING_DROPOFF' && status !== 'CANCELLED' ? DRIVERS[(i + 2) % DRIVERS.length] : null;
   const deliveryDriver = status === 'PICKUP_CONFIRMED' || status === 'DELIVERED' ? DRIVERS[(i + 5) % DRIVERS.length] : null;
+  const isPendingStorage = status === 'PENDING_DROPOFF' || status === 'PENDING_PICKUP';
 
   const createdAt = daysAgo((i % 21) + 1);
   const pickupAt = hoursFrom(createdAt, ((i % 10) + 3));
@@ -154,7 +163,7 @@ function storageOrder(i) {
     storage_days: storageDays,
     storage_fee_cents: storageFeeCents,
     storage_start_date: status !== 'PENDING_DROPOFF' ? pickupAt : null,
-    storage_end_date: status === 'PICKUP_CONFIRMED' || status === 'DELIVERED' ? deliveryAt : null,
+    storage_end_date: isPendingStorage ? threeMonthsOut((i % 48) - 24) : (status === 'PICKUP_CONFIRMED' || status === 'DELIVERED' ? deliveryAt : null),
     pickup_address: `${100 + (i * 89) % 9900} ${STREETS[(i + 5) % STREETS.length]}, San Francisco, CA`,
     pickup_latitude: 37.7749 + ((i % 4) - 1) * 0.02,
     pickup_longitude: -122.4194 + ((i % 5) - 2) * 0.02,
