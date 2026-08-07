@@ -1,7 +1,7 @@
 {
-  "name": "@luggster/storage-worker",
+  "name": "@ops-demo/storage-worker",
   "version": "1.0.0",
-  "description": "Storage operations worker for LuggageLink",
+  "description": "Storage operations worker for Ops Demo",
   "main": "src/index.ts",
   "type": "module",
   "scripts": {

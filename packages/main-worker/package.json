@@ -1,7 +1,7 @@
 {
-  "name": "@luggster/main-worker",
+  "name": "@ops-demo/main-worker",
   "version": "2.0.0",
-  "description": "Main operations console for LuggageLink",
+  "description": "Main operations console for Ops Demo",
   "main": "src/index.ts",
   "type": "module",
   "scripts": {

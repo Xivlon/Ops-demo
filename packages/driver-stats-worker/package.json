@@ -1,7 +1,7 @@
 {
-  "name": "@luggster/driver-stats-worker",
+  "name": "@ops-demo/driver-stats-worker",
   "version": "1.0.0",
-  "description": "Driver statistics worker for LuggageLink",
+  "description": "Driver statistics worker for Ops Demo",
   "main": "src/index.ts",
   "type": "module",
   "scripts": {

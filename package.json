@@ -1,7 +1,7 @@
 {
-  "name": "luggster-ops-workspace",
+  "name": "ops-demo-workspace",
   "version": "2.0.0",
-  "description": "LuggageLink Operations Console - Workspace",
+  "description": "Ops Demo Operations Console - Workspace",
   "private": true,
   "workspaces": [
     "packages/main-worker",
@@ -15,10 +15,16 @@
     "deploy:main": "npm run deploy --workspace=packages/main-worker",
     "deploy:stats": "npm run deploy --workspace=packages/driver-stats-worker",
     "deploy:all": "npm run deploy:main && npm run deploy:stats",
-    "check": "npm run check --workspaces"
+    "check": "npm run check --workspaces",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:reset": "docker compose down -v && npm run db:up",
+    "db:seed": "node scripts/seed-mock-db.mjs",
+    "db:fresh": "npm run db:reset && sleep 3 && npm run db:seed"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "concurrently": "^9.1.2",
+    "pg": "^8.22.0"
   },
   "engines": {
     "node": ">=20.0.0"

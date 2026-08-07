@@ -1,8 +1,8 @@
-# Luggster Ops - Development Guide
+# Ops Demo - Development Guide
 
 ## Architecture Overview
 
-This is a Cloudflare Worker-based operations console for LuggageLink, using:
+This is a Cloudflare Worker-based operations console for Ops Demo, using:
 - **Runtime**: Cloudflare Workers (V8 isolates)
 - **Database**: Neon PostgreSQL (serverless Postgres)
 - **ORM/Connection**: `@neondatabase/serverless` Pool for connection pooling
@@ -114,23 +114,32 @@ Benefits:
    npm install
    ```
 
-2. **Configure environment**
+2. **Start the local mock Postgres database**
+   ```bash
+   npm run db:up      # docker compose up -d postgres
+   npm run db:seed    # inserts deterministic drivers, shipments, and storage orders
+   ```
+   Use `npm run db:reset` to wipe the volume and start fresh, then `npm run db:seed` again.
+   The container exposes Postgres on host port `5433` to avoid conflicts with any local Postgres on `5432`.
+
+3. **Configure environment**
    ```bash
    cp .env.example .env
-   # Edit .env with your values
+   cp .env.example packages/main-worker/.dev.vars
+   # Default DATABASE_URL points to the local Docker Postgres
    ```
 
-3. **Build HTML templates** (required before dev/deploy)
+4. **Build HTML templates** (required before dev/deploy)
    ```bash
    npm run build:html
    ```
 
-4. **Run locally**
+5. **Run locally**
    ```bash
-   npm run dev
+   npm run dev:main
    ```
 
-5. **Deploy**
+6. **Deploy**
    ```bash
    # Set secrets first (NEVER commit these to version control)
    wrangler secret put DATABASE_URL
@@ -191,7 +200,7 @@ Benefits:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `DATABASE_URL` | Yes | Neon PostgreSQL connection string |
+| `DATABASE_URL` | Yes | PostgreSQL connection string. Local dev default: `postgresql://opsdemo:opsdemo@localhost:5433/opsdemo` |
 | `JWT_SECRET` | Yes | Secret key for JWT signing |
 | `ROLES` | Yes | JSON map of role→PIN: `{"admin":"...","storage":"...","transport":"..."}` |
 | `JWT_EXPIRY_HOURS` | No | JWT expiry (default: 24) |
