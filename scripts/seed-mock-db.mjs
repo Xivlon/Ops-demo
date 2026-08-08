@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 /**
- * Seed the local PostgreSQL mock database with deterministic demo data.
+ * Seed a PostgreSQL database with deterministic demo data.
  *
- * Expects DATABASE_URL to be set, e.g.:
- *   DATABASE_URL=postgresql://opsdemo:opsdemo@localhost:5433/opsdemo node scripts/seed-mock-db.mjs
+ * Works with the local Docker Compose Postgres or with Neon serverless Postgres.
+ *
+ * Examples:
+ *   DATABASE_URL=postgresql://opsdemo:opsdemo@localhost:5433/opsdemo npm run db:seed
+ *   DATABASE_URL=postgres://user:password@host.neon.tech/database?sslmode=require npm run db:seed
  */
 
 import pg from 'pg';
@@ -11,7 +14,12 @@ const { Pool } = pg;
 
 const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://opsdemo:opsdemo@localhost:5433/opsdemo';
 
-const pool = new Pool({ connectionString: DATABASE_URL, ssl: false });
+// Neon requires SSL; local Docker does not. Auto-detect based on hostname.
+const isNeon = DATABASE_URL.includes('neon.tech');
+const pool = new Pool({
+  connectionString: DATABASE_URL,
+  ssl: isNeon ? { rejectUnauthorized: false } : false,
+});
 
 function now() {
   return new Date().toISOString();

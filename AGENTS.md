@@ -139,16 +139,40 @@ Benefits:
    npm run dev:main
    ```
 
-6. **Deploy**
+### Using Neon PostgreSQL for production
+
+This project is designed to work with [Neon](https://neon.tech) serverless PostgreSQL in production.
+
+1. Create a Neon project at https://console.neon.tech and note the database name.
+2. In the Neon Dashboard, go to **Connection Details** and copy the Postgres connection string.
+3. Seed the Neon database with the same deterministic demo data used locally:
    ```bash
-   # Set secrets first (NEVER commit these to version control)
+   DATABASE_URL="postgres://user:password@host.neon.tech/database?sslmode=require" npm run db:seed
+   ```
+4. Set the connection string as a Wrangler secret for each environment you deploy to:
+   ```bash
    wrangler secret put DATABASE_URL
+   wrangler secret put DATABASE_URL --env staging
+   ```
+5. Set the remaining secrets:
+   ```bash
    wrangler secret put JWT_SECRET
    wrangler secret put ROLES
-   
-   # Then deploy
-   npm run deploy
+   # Optional but recommended:
+   wrangler secret put PIN_PEPPER
    ```
+
+### Deploy
+
+```bash
+# Set secrets first (NEVER commit these to version control)
+wrangler secret put DATABASE_URL
+wrangler secret put JWT_SECRET
+wrangler secret put ROLES
+
+# Then deploy
+npm run deploy
+```
 
 ## API Endpoints
 
