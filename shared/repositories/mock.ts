@@ -224,6 +224,10 @@ export class MockStorageRepository extends MockBaseRepository {
     return this.store.storage.find(s => s.id === id) ?? null;
   }
 
+  private normalizeStorageStatus(status: string): string {
+    return status?.toUpperCase().replace(/-/g, '_');
+  }
+
   async list(params: ListStorageParams = {}): Promise<Storage[]> {
     const { status, limit = 100, days = 30 } = params;
     const cutoff = new Date();
@@ -234,7 +238,8 @@ export class MockStorageRepository extends MockBaseRepository {
       .sort((a, b) => new Date(a.pickup_at).getTime() - new Date(b.pickup_at).getTime());
 
     if (status) {
-      rows = rows.filter(s => s.status === status);
+      const normalized = this.normalizeStorageStatus(status);
+      rows = rows.filter(s => this.normalizeStorageStatus(s.status) === normalized);
     }
 
     return rows.slice(0, limit);
@@ -274,25 +279,45 @@ export class MockStorageRepository extends MockBaseRepository {
       0
     );
     const revenue = this.store.storage
-      .filter(s => s.status !== 'pending')
+      .filter(s => this.normalizeStorageStatus(s.status) !== 'PENDING_DROPOFF')
       .reduce((sum, s) => sum + s.price_cents, 0) / 100;
 
-    return {
-      pending: this.store.storage.filter(s => s.status === 'pending').length,
-      picked_up: this.store.storage.filter(s => s.status === 'picked_up').length,
-      in_storage: this.store.storage.filter(s => s.status === 'in_storage').length,
-      ready_for_delivery: this.store.storage.filter(s => s.status === 'ready_for_delivery').length,
-      delivered: this.store.storage.filter(s => s.status === 'delivered').length,
-      cancelled: this.store.storage.filter(s => s.status === 'cancelled').length,
+    const stats: StorageStats = {
+      pending: 0,
+      picked_up: 0,
+      in_storage: 0,
+      ready_for_delivery: 0,
+      delivered: 0,
+      cancelled: 0,
       total_bags: totalBags,
       total_revenue: revenue,
     };
+
+    for (const s of this.store.storage) {
+      const status = this.normalizeStorageStatus(s.status);
+      switch (status) {
+        case 'PENDING_DROPOFF':
+          stats.pending++;
+          break;
+        case 'PENDING_PICKUP':
+          stats.in_storage++;
+          break;
+        case 'PICKUP_CONFIRMED':
+        case 'DELIVERED':
+          stats.delivered++;
+          break;
+        default:
+          stats.cancelled++;
+      }
+    }
+
+    return stats;
   }
 
   async confirmDropoff(storageId: string): Promise<boolean> {
     const order = this.store.storage.find(s => s.id === storageId);
-    if (!order || order.status !== 'pending') return false;
-    order.status = 'in_storage';
+    if (!order || this.normalizeStorageStatus(order.status) !== 'PENDING_DROPOFF') return false;
+    order.status = 'PENDING_PICKUP' as StorageStatus;
     order.storage_start_date = new Date().toISOString();
     order.updated_at = new Date().toISOString();
     return true;
@@ -300,8 +325,8 @@ export class MockStorageRepository extends MockBaseRepository {
 
   async confirmPickup(storageId: string): Promise<boolean> {
     const order = this.store.storage.find(s => s.id === storageId);
-    if (!order || order.status !== 'in_storage') return false;
-    order.status = 'ready_for_delivery';
+    if (!order || this.normalizeStorageStatus(order.status) !== 'PENDING_PICKUP') return false;
+    order.status = 'PICKUP_CONFIRMED' as StorageStatus;
     order.picked_up_at = new Date().toISOString();
     order.updated_at = new Date().toISOString();
     return true;
@@ -309,8 +334,10 @@ export class MockStorageRepository extends MockBaseRepository {
 
   async cancel(storageId: string): Promise<boolean> {
     const order = this.store.storage.find(s => s.id === storageId);
-    if (!order || order.status === 'delivered' || order.status === 'cancelled') return false;
-    order.status = 'cancelled';
+    if (!order) return false;
+    const status = this.normalizeStorageStatus(order.status);
+    if (status === 'DELIVERED' || status === 'CANCELLED' || status === 'PICKUP_CONFIRMED') return false;
+    order.status = 'CANCELLED' as StorageStatus;
     order.updated_at = new Date().toISOString();
     return true;
   }

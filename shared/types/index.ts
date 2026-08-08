@@ -217,7 +217,13 @@ export interface Storage {
   delivery_driver_name?: string | null;
 }
 
-export type StorageStatus = 'pending' | 'picked_up' | 'in_storage' | 'ready_for_delivery' | 'delivered' | 'cancelled';
+export type StorageStatus =
+  // Frontend labels
+  | 'pending' | 'picked_up' | 'in_storage' | 'ready_for_delivery' | 'delivered' | 'cancelled'
+  // Database enum values
+  | 'PENDING_DROPOFF' | 'PENDING_PICKUP' | 'PICKUP_CONFIRMED' | 'DELIVERED' | 'CANCELLED'
+  // Legacy / alternate forms used in migrations
+  | 'DROPPED_OFF' | 'IN_STORAGE' | 'SCHEDULED_FOR_DELIVERY';
 
 export interface StorageStats {
   pending: number;
