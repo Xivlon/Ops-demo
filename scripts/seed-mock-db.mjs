@@ -10,12 +10,13 @@
  */
 
 import pg from 'pg';
-const { Pool } = pg;
+import { Pool as NeonPool } from '@neondatabase/serverless';
 
 const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://opsdemo:opsdemo@localhost:5433/opsdemo';
 
 // Neon requires SSL; local Docker does not. Auto-detect based on hostname.
 const isNeon = DATABASE_URL.includes('neon.tech');
+const Pool = isNeon ? NeonPool : pg.Pool;
 const pool = new Pool({
   connectionString: DATABASE_URL,
   ssl: isNeon ? { rejectUnauthorized: false } : false,

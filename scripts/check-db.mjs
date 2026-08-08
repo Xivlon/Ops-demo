@@ -7,7 +7,7 @@
  */
 
 import pg from 'pg';
-const { Pool } = pg;
+import { Pool as NeonPool } from '@neondatabase/serverless';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
@@ -26,6 +26,7 @@ try {
 console.log('Connecting to:', displayUrl);
 
 const isNeon = DATABASE_URL.includes('neon.tech');
+const Pool = isNeon ? NeonPool : pg.Pool;
 const pool = new Pool({
   connectionString: DATABASE_URL,
   ssl: isNeon ? { rejectUnauthorized: false } : false,
