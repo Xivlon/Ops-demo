@@ -222,7 +222,7 @@ const worker: ExportedHandler<Env> = {
       return new Response(STYLES_CSS, {
         headers: {
           'Content-Type': 'text/css',
-          'Cache-Control': 'public, max-age=86400',
+          'Cache-Control': 'public, max-age=0, must-revalidate',
         },
       });
     }
