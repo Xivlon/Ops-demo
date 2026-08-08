@@ -18,6 +18,7 @@ import {
   LOGIN_HTML,
   STORAGE_HTML,
 } from './generated/html-templates';
+import { STYLES_CSS } from './generated/styles-css';
 
 // Configuration for driver stats worker
 const DEFAULT_DRIVER_STATS_WORKER_URL = 'https://driver-stats.constance-api.workers.dev';
@@ -214,6 +215,16 @@ const worker: ExportedHandler<Env> = {
     // Simple ping endpoint - no auth, no DB
     if (path === '/ping' && method === 'GET') {
       return jsonResponse({ success: true, data: { message: 'pong', timestamp: new Date().toISOString() } }, 200, true, origin);
+    }
+
+    // Compiled Tailwind CSS stylesheet - no auth, no DB
+    if (path === '/styles.css' && method === 'GET') {
+      return new Response(STYLES_CSS, {
+        headers: {
+          'Content-Type': 'text/css',
+          'Cache-Control': 'public, max-age=86400',
+        },
+      });
     }
 
     // Connection health check endpoint

@@ -5,7 +5,8 @@
   "main": "src/index.ts",
   "type": "module",
   "scripts": {
-    "build": "npm run build:html",
+    "build": "npm run build:css && npm run build:html",
+    "build:css": "node ../../scripts/build-css.ts",
     "build:html": "node ../../scripts/build-html-new.ts",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
@@ -17,6 +18,9 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260124.0",
     "@types/node": "^25.0.10",
+    "autoprefixer": "^10.5.4",
+    "postcss": "^8.5.26",
+    "tailwindcss": "^3.4.19",
     "typescript": "^5.9.3",
     "wrangler": "^4.67.0"
   }
