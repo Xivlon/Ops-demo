@@ -351,8 +351,18 @@ CREATE TABLE IF NOT EXISTS driver_stats (
 );
 `;
 
+function displayUrl() {
+  try {
+    const u = new URL(DATABASE_URL);
+    return `${u.protocol}//${u.username}:***@${u.host}${u.pathname}`;
+  } catch {
+    return '<unparseable>';
+  }
+}
+
 async function run() {
   try {
+    console.log('Connecting to:', displayUrl());
     console.log('Setting up schema...');
     await pool.query(SCHEMA_SQL);
 
@@ -431,6 +441,23 @@ async function run() {
     `);
 
     console.log('Mock database seeded successfully.');
+
+    const tables = await pool.query(`
+      SELECT table_name
+      FROM information_schema.tables
+      WHERE table_schema = 'public'
+      ORDER BY table_name
+    `);
+    console.log('Tables in database:', tables.rows.map(r => r.table_name).join(', '));
+
+    const counts = await pool.query(`
+      SELECT
+        (SELECT COUNT(*) FROM driver_profiles) AS drivers,
+        (SELECT COUNT(*) FROM shipments) AS shipments,
+        (SELECT COUNT(*) FROM storage) AS storage,
+        (SELECT COUNT(*) FROM driver_stats) AS driver_stats
+    `);
+    console.log('Row counts:', counts.rows[0]);
   } catch (error) {
     console.error('Seeding failed:', error);
     process.exitCode = 1;

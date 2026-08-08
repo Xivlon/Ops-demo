@@ -20,6 +20,7 @@
     "db:down": "docker compose down",
     "db:reset": "docker compose down -v && npm run db:up",
     "db:seed": "node scripts/seed-mock-db.mjs",
+    "db:check": "node scripts/check-db.mjs",
     "db:fresh": "npm run db:reset && sleep 3 && npm run db:seed"
   },
   "devDependencies": {
