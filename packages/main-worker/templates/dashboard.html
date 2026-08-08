@@ -592,27 +592,7 @@
         }
 
         list.sort((a, b) => {
-            // When showing all orders (no filter), sort by status priority:
-            // Active orders first (PENDING > ASSIGNED > PICKED_UP), then FAILED, then DELIVERED at bottom
-            if (!statusFilter) {
-                const statusPriority = { 'PENDING': 0, 'ASSIGNED': 1, 'IN_TRANSIT': 2, 'DELIVERED': 4 };
-                const priorityA = statusPriority[a.status] ?? 3;
-                const priorityB = statusPriority[b.status] ?? 3;
-                
-                // Within active orders, sort FAILED urgency to bottom of that group
-                if (priorityA === priorityB && priorityA < 3) {
-                    if (a.urgency === 'FAILED' && b.urgency !== 'FAILED') return 1;
-                    if (a.urgency !== 'FAILED' && b.urgency === 'FAILED') return -1;
-                }
-                
-                if (priorityA !== priorityB) return priorityA - priorityB;
-            }
-            
-            // First sort by urgency priority (urgent items first)
-            const urgencyDiff = getUrgencyPriority(a.urgency, a.status) - getUrgencyPriority(b.urgency, b.status);
-            if (urgencyDiff !== 0) return urgencyDiff;
-            
-            // Then apply user-selected sort
+            // 1. Apply the user-selected column sort first
             const colKey = currentSortedCol;
             let valA, valB;
 
@@ -627,6 +607,25 @@
 
             if (valA < valB) return sortOrder[colKey] === 'asc' ? -1 : 1;
             if (valA > valB) return sortOrder[colKey] === 'asc' ? 1 : -1;
+
+            // 2. Tie-break by urgency for active orders
+            const urgencyDiff = getUrgencyPriority(a.urgency, a.status) - getUrgencyPriority(b.urgency, b.status);
+            if (urgencyDiff !== 0) return urgencyDiff;
+
+            // 3. Tie-break by status priority when no explicit status filter is set
+            if (!statusFilter) {
+                const statusPriority = { 'PENDING': 0, 'ASSIGNED': 1, 'IN_TRANSIT': 2, 'DELIVERED': 4 };
+                const priorityA = statusPriority[a.status] ?? 3;
+                const priorityB = statusPriority[b.status] ?? 3;
+
+                if (priorityA === priorityB && priorityA < 3) {
+                    if (a.urgency === 'FAILED' && b.urgency !== 'FAILED') return 1;
+                    if (a.urgency !== 'FAILED' && b.urgency === 'FAILED') return -1;
+                }
+
+                if (priorityA !== priorityB) return priorityA - priorityB;
+            }
+
             return 0;
         });
 
@@ -822,14 +821,13 @@
     }
 
     function sortTable(colIndex) {
-        const isAsc = sortOrder[colIndex] === 'asc';
-        sortOrder[colIndex] = isAsc ? 'desc' : 'asc';
+        const wasAsc = sortOrder[colIndex] === 'asc';
+        sortOrder[colIndex] = wasAsc ? 'desc' : 'asc';
         currentSortedCol = colIndex;
 
         document.querySelectorAll('.sort-indicator').forEach(el => el.innerHTML = '');
         const headerIcon = document.querySelector('[data-sort-key="' + colIndex + '"]');
-        if(headerIcon) headerIcon.innerHTML = isAsc ? '▲' : '▼'; 
-
+        if(headerIcon) headerIcon.innerHTML = wasAsc ? '▼' : '▲';
 
         renderTable();
     }
