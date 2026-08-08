@@ -291,13 +291,13 @@
     </div>
 
     <!-- Stats Strip - polaroid cards in a horizontal scroll -->
-    <div class="flex gap-4 overflow-x-auto pb-2 snap-x snap-mandatory" id="stats-grid">
-        <div class="flex-none w-[150px] snap-start bg-koda-panel h-28 rounded-md animate-pulse"></div>
-        <div class="flex-none w-[150px] snap-start bg-koda-panel h-28 rounded-md animate-pulse"></div>
-        <div class="flex-none w-[150px] snap-start bg-koda-panel h-28 rounded-md animate-pulse"></div>
-        <div class="flex-none w-[150px] snap-start bg-koda-panel h-28 rounded-md animate-pulse"></div>
-        <div class="flex-none w-[150px] snap-start bg-koda-panel h-28 rounded-md animate-pulse"></div>
-        <div class="flex-none w-[150px] snap-start bg-koda-panel h-28 rounded-md animate-pulse"></div>
+    <div class="flex gap-4 overflow-x-auto py-3 snap-x snap-mandatory" id="stats-grid">
+        <div class="flex-none w-[190px] snap-start bg-koda-panel min-h-[120px] rounded-md animate-pulse"></div>
+        <div class="flex-none w-[190px] snap-start bg-koda-panel min-h-[120px] rounded-md animate-pulse"></div>
+        <div class="flex-none w-[190px] snap-start bg-koda-panel min-h-[120px] rounded-md animate-pulse"></div>
+        <div class="flex-none w-[190px] snap-start bg-koda-panel min-h-[120px] rounded-md animate-pulse"></div>
+        <div class="flex-none w-[190px] snap-start bg-koda-panel min-h-[120px] rounded-md animate-pulse"></div>
+        <div class="flex-none w-[190px] snap-start bg-koda-panel min-h-[120px] rounded-md animate-pulse"></div>
     </div>
 
     <!-- Storage Table -->
@@ -482,7 +482,7 @@
             if (status) {
                 const isActive = currentStatusFilter === status;
                 const activeClass = isActive ? 'ring-2 ring-koda-gold -translate-y-0.5' : '';
-                return `<div data-status="${status}" onclick="setStatusFilter('${status}')" class="stat-card ${activeClass} flex-none w-[150px] snap-start bg-koda-card text-koda-cream rounded-md p-4 pb-5 border border-koda-line shadow-[0_4px_14px_rgba(0,0,0,.5)] relative overflow-hidden transition-all cursor-pointer hover:-translate-y-0.5">
+                return `<div data-status="${status}" onclick="setStatusFilter('${status}')" class="stat-card ${activeClass} flex-none w-[190px] snap-start bg-koda-card text-koda-cream rounded-md p-5 pb-7 min-h-[120px] border border-koda-line shadow-[0_4px_14px_rgba(0,0,0,.5)] relative overflow-hidden transition-all cursor-pointer hover:-translate-y-0.5">
                        <div class="flex items-center gap-1.5 mb-2">
                            <span class="w-2.5 h-2.5 rounded-[2px] bg-${color}-500 flex-shrink-0"></span>
                            <div class="micro-label text-[10px] font-bold text-koda-mute">${label}</div>
@@ -491,7 +491,7 @@
                        </div>`;
             }
 
-            return `<div class="stat-card flex-none w-[150px] snap-start bg-koda-card text-koda-cream rounded-md p-4 pb-5 border border-koda-line shadow-[0_4px_14px_rgba(0,0,0,.5)] relative overflow-hidden transition-all hover:-translate-y-0.5">
+            return `<div class="stat-card flex-none w-[190px] snap-start bg-koda-card text-koda-cream rounded-md p-5 pb-7 min-h-[120px] border border-koda-line shadow-[0_4px_14px_rgba(0,0,0,.5)] relative overflow-hidden transition-all hover:-translate-y-0.5">
                    <div class="flex items-center gap-1.5 mb-2">
                        <span class="w-2.5 h-2.5 rounded-[2px] bg-${color}-500 flex-shrink-0"></span>
                        <div class="micro-label text-[10px] font-bold text-koda-mute">${label}</div>
